@@ -35,6 +35,7 @@ let snapshot = history.state?.ae ? history.state.snapshot : null;
 let overlay = history.state?.ae ? history.state.overlay : null;
 let pendingAfterClose = null;
 let scrollTimer;
+let composingQuery = false;
 
 function readURL() {
   const params = new URLSearchParams(location.hash.slice(1));
@@ -134,7 +135,7 @@ function wineNames(app) {
 }
 
 function searchUI() {
-  return `<section class="search-box" aria-label="${escape(t('search'))}"><label for="query" class="search-label">${escape(t('search'))}</label><input type="search" id="query" value="${escape(state.query)}" placeholder="${escape(t('search'))}" autocomplete="off" aria-controls="candidates" aria-expanded="${Boolean(state.query)}"><div id="chips" class="chips"></div><p id="candidate-status" class="sr-only" role="status"></p><div id="candidates" class="candidates"></div></section>${coverageHTML()}<section id="results" tabindex="-1" aria-live="polite" aria-atomic="false"></section>`;
+  return `<section class="search-box" aria-label="${escape(t('search'))}"><label for="query" class="search-label">${escape(state.lang === 'ja' ? '産地・品種・ワインのタイプの候補を探す' : 'Find place, grape and wine-type suggestions')}</label><p id="query-help" class="meta-line">${escape(state.lang === 'ja' ? '入力は候補探しです。選択した条件だけが結果に適用されます。' : 'Typing finds suggestions. Only selected filters apply to results.')}</p><input type="search" id="query" value="${escape(state.query)}" placeholder="${escape(t('search'))}" autocomplete="off" aria-describedby="query-help" aria-controls="candidates" aria-expanded="${Boolean(state.query)}"><section aria-label="${state.lang === 'ja' ? '適用中の条件' : 'Applied filters'}"><h2 class="filters-heading">${state.lang === 'ja' ? '適用中の条件' : 'Applied filters'}</h2><div id="chips" class="chips"></div></section><p id="candidate-status" class="sr-only" role="status"></p><div id="candidates" class="candidates"></div></section>${coverageHTML()}<section id="results" tabindex="-1" aria-live="polite" aria-atomic="false"></section>`;
 }
 
 function homeHTML() {
@@ -158,7 +159,11 @@ function regionHTML() {
 
 function renderChips() {
   if (!$('chips')) return;
-  $('chips').innerHTML = state.filters.map((filter, index) => button(`${t(filter.mode)}: ${name(find(filter.kind, filter.id)) || filter.id}`, 'chip-menu', `data-index="${index}" aria-haspopup="dialog"`, `chip ${filter.mode}`)).join('');
+  $('chips').innerHTML = state.filters.map((filter, index) => {
+    const label = `${t(filter.mode)}: ${name(find(filter.kind, filter.id)) || filter.id}`;
+    return `<span class="chip-pair">${button(label, 'chip-menu', `data-index="${index}" aria-haspopup="dialog"`, `chip ${filter.mode}`)}${button('×', 'remove-filter', `data-index="${index}" aria-label="${escape(label + (state.lang === 'ja' ? 'の条件を外す' : ': remove filter'))}"`, 'chip-remove')}</span>`;
+  }).join('') + (state.filters.length ? button(state.lang === 'ja' ? '選択した条件をすべて解除' : 'Clear all selected filters', 'clear-applied', '', 'quiet') : `<p class="meta-line">${state.lang === 'ja' ? '選択した条件はありません。' : 'No selected filters.'}</p>`)
+    + (['region','country'].includes(state.route) ? `<p class="meta-line">${escape(state.lang === 'ja' ? `探索範囲：${name(find(state.route,state.id))}（条件を解除してもこの範囲内を表示）` : `Browsing within ${name(find(state.route,state.id))}; clearing filters keeps this scope.`)}</p>` : '');
 }
 
 function candidateMeta(candidate) {
@@ -179,7 +184,7 @@ function renderCandidates() {
     const attributes = `data-kind="${kind}" data-id="${escape(candidate.id)}"`;
     const excludeLabel = state.filters.some(f => f.kind === kind && f.id === candidate.id && f.mode === 'include') ? t('changeExclude') : t('addExclude');
     const isDetail = ['appellation', 'designation'].includes(kind);
-    return `<div class="candidate"><button type="button" class="candidate-name" data-action="${isDetail || kind === 'region' ? 'candidate-navigate' : 'add-filter'}" ${attributes}><span>${escape(name(candidate))}</span>${original(candidate) !== name(candidate) ? `<small lang="it">${escape(original(candidate))}</small>` : ''}<small>${escape(candidateMeta(candidate))}</small>${kind === 'region' ? `<small>${escape(t('explore'))} ›</small>` : ''}</button><div class="candidate-actions">${isDetail ? '' : `${kind === 'region' ? button(t('add'), 'add-filter', `${attributes} aria-label="${escape(name(candidate) + ': ' + t('add'))}"`) : ''}${button(excludeLabel, 'add-filter', `${attributes} data-mode="exclude" aria-label="${escape(name(candidate) + ': ' + excludeLabel)}"`)}`}</div></div>`;
+    return `<div class="candidate"><button type="button" class="candidate-name" data-action="${isDetail || kind === 'region' ? 'candidate-navigate' : 'add-filter'}" ${attributes}><span>${escape(name(candidate))}</span>${original(candidate) !== name(candidate) ? `<small lang="it">${escape(original(candidate))}</small>` : ''}<small>${escape(candidateMeta(candidate))}</small><small>${escape(isDetail ? state.lang === 'ja' ? '詳細を見る' : 'View details' : kind === 'region' ? t('explore') : state.lang === 'ja' ? '含む条件に追加' : 'Add inclusion filter')} ›</small></button><div class="candidate-actions">${isDetail ? '' : `${kind === 'region' ? button(t('add'), 'add-filter', `${attributes} aria-label="${escape(name(candidate) + ': ' + t('add'))}"`) : ''}${button(excludeLabel, 'add-filter', `${attributes} data-mode="exclude" aria-label="${escape(name(candidate) + ': ' + excludeLabel)}"`)}`}</div></div>`;
   }).join('')}</section>`).join('') || (state.query.trim() && !candidatesHidden ? `<p class="muted">${escape(t('noCandidates'))}</p>` : '');
   if (all.length > candidateLimit) $('candidates').innerHTML += button(t('moreCandidates'), 'more-candidates');
   $('query').setAttribute('aria-expanded', String(Boolean(all.length)));
@@ -433,9 +438,12 @@ function toast(text) {
 function addFilter(kind, id, mode = 'include') {
   const candidate = find(kind, id) ?? { kind, id };
   candidatesHidden = true;
-  replace({ filters: upsertFilter(state.filters, { ...candidate, kind, id }, mode) }, false);
+  replace({ query: '', filters: upsertFilter(state.filters, { ...candidate, kind, id }, mode) }, false);
+  if ($('query')) $('query').value = '';
   renderChips(); renderCandidates(); renderResults();
-  $('results')?.focus({ preventScroll: true });
+  if (matchMedia('(pointer: coarse)').matches) { $('results')?.focus({ preventScroll: true }); $('results')?.scrollIntoView({block:'nearest'}); }
+  else $('query')?.focus({ preventScroll: true });
+  saveEntry();
 }
 
 document.addEventListener('click', event => {
@@ -445,13 +453,20 @@ document.addEventListener('click', event => {
   const { action, id, kind } = target.dataset;
   if (action === 'back') history.back();
   else if (action === 'home') navigate('home');
-  else if (action === 'navigate' || action === 'candidate-navigate') navigate(kind, id || null);
+  else if (action === 'navigate' || action === 'candidate-navigate') {
+    if (action === 'candidate-navigate') { replace({query:''},false); if ($('query')) $('query').value=''; candidatesHidden=true; }
+    navigate(kind, id || null);
+  }
   else if (action === 'open-match') navigate(kind, id, { filters: activeFilters(), matchIds: (target.dataset.wines || '').split(',').filter(Boolean) });
   else if (action === 'language') { preferredLanguage = target.dataset.language; replace({ lang: preferredLanguage }); }
   else if (action === 'clear-recent') { try { localStorage.removeItem('ae-recent-v1'); render(); $('main').focus(); toast(state.lang === 'ja' ? '閲覧履歴を消去しました。検索条件は保持しています。' : 'History cleared. Search filters are retained.'); } catch { toast(state.lang === 'ja' ? 'この端末では履歴を消去できませんでした。' : 'Could not clear local history.'); } }
   else if (action === 'more-candidates') { candidateLimit += 12; renderCandidates(); }
   else if (action === 'reset-filters') { replace({ filters: [], invalidLink: false }); }
   else if (action === 'add-filter') addFilter(kind, id, target.dataset.mode || 'include');
+  else if (action === 'remove-filter' || action === 'clear-applied') {
+    replace({filters: action === 'clear-applied' ? [] : state.filters.filter((_,index)=>index!==Number(target.dataset.index))},false);
+    renderChips(); renderResults(); $('query')?.focus({preventScroll:true}); saveEntry();
+  }
   else if (action === 'chip-menu') openMenu(Number(target.dataset.index));
   else if (action === 'close-overlay') history.back();
   else if (action === 'change-filter') {
@@ -466,7 +481,7 @@ document.addEventListener('click', event => {
     history.back();
   } else if (action === 'grape-link') {
     const wasExclude = state.filters.some(item => item.kind === 'grape' && item.id === id && item.mode === 'exclude');
-    navigate('home', null, { filters: upsertFilter(state.filters, { kind: 'grape', id }, 'include') });
+    navigate('home', null, { query: '', filters: upsertFilter(state.filters, { kind: 'grape', id }, 'include') });
     if (wasExclude) toast(t('changed'));
   } else if (action === 'common-jump') { event.preventDefault(); $('common-grapes')?.focus();
   } else if (action === 'sources-jump') {
@@ -478,6 +493,7 @@ document.addEventListener('click', event => {
 // not a fake combobox with inaccessible secondary actions.
 document.addEventListener('keydown', event => {
   const query = $('query');
+  if (event.isComposing || composingQuery || event.keyCode === 229) { if (event.key === 'Enter' && event.target.closest('#candidates')) event.preventDefault(); return; }
   const buttons = [...document.querySelectorAll('#candidates button:not([hidden])')];
   if (!query || !buttons.length || !(event.target === query || buttons.includes(event.target))) return;
   if (event.key === 'Escape') { event.preventDefault(); query.focus(); return; }
@@ -487,6 +503,9 @@ document.addEventListener('keydown', event => {
   const next = event.key === 'ArrowDown' ? index + 1 : index - 1;
   if (next < 0) query.focus(); else buttons[Math.min(next, buttons.length - 1)].focus();
 });
+
+document.addEventListener('compositionstart', event => { if (event.target.id === 'query') composingQuery = true; });
+document.addEventListener('compositionend', event => { if (event.target.id === 'query') composingQuery = false; });
 
 document.addEventListener('input', event => {
   if (event.target.matches('[data-grape-search]')) { const q = event.target.value; const found = new Set(findCandidates(data, q, state.lang).filter(c => c.kind === 'grape').map(c => c.id)); event.target.closest('.grape-list').querySelectorAll('.grape-link').forEach(button => { button.hidden = Boolean(q) && !found.has(button.dataset.id); }); return; }

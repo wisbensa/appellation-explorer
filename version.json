@@ -1,5 +1,5 @@
 {
-  "artifactVersion": "24994df1be57eab5593f",
+  "artifactVersion": "3b115cac82eba4536e16",
   "counts": {
     "appellations": 8,
     "designations": 0,
@@ -8,7 +8,7 @@
   "dataVersion": "ef7a3efd399d69fcbc65",
   "files": {
     ".nojekyll": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "app.js": "060bc8cba1836869c919765edf3c5ea3ac4b4d4f525e2edfcbbde37ef5aa5de0",
+    "app.js": "a1e514644586dc65f41fffac1097c620e4e26b487d089a013681582bdac8fd41",
     "data.json": "44749b2ed43d8f2d7392d30c9fd84f5adbfa24f0ab4d96ba6fee3ef21a433a4a",
     "index.html": "d86928025be4608eef55381b996c0155d94ae8738249570b0ab4dab3746f9e5c",
     "lib/blend.mjs": "bb7f33db215d47c304368e52295ccdebe39681f819c0b096a7533955368d8614",
@@ -16,7 +16,7 @@
     "lib/field-integrity.mjs": "0153d6edc15f1e7e006f428ab02d0090177ea8eafdb661308b121abe379f2524",
     "lib/regulation-explanations.mjs": "3cfb56a8c24c82b83c93d9ee76f63f20ebef95b69c64dc037606dd079dc05155",
     "lib/search.mjs": "fafaad2f95d25f10953d8960c1bd2ea5d63a670258bd8a21b59844b397d136b9",
-    "styles.css": "fa91c9ede255bf961ac86ca763a5a3cc738bc992e7c05e308c7e8f4c400837ac"
+    "styles.css": "36c175dfe84ed03a9bf7332fd8fa6312e429257189161cd0507611487a275b4b"
   },
   "fixture": false,
   "schemaVersion": 1
