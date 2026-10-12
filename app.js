@@ -1,0 +1,411 @@
+import { displayName, buildCandidates, findCandidates, searchAppellations, upsertFilter, regionBelongs } from './lib/search.mjs';
+import { ratioBasis, evaluateGrapeUse, grapeUsePermissionProved } from './lib/blend.mjs';
+
+const words = {
+  ja: { back: '戻る', home: 'ホーム', title: '産地から、品種から。', intro: '公式規定を手がかりに、ワインの呼称と使える品種を探索します。', search: '呼称・地域・品種・条件を探す', country: '国', region: '地域', appellation: '呼称', designation: '地理的名称', grape: '品種', gi: 'EU区分', traditional: '伝統的呼称', type: 'ワインのタイプ', qualifier: '公式の追加表示', countries: '国から探す', regions: '地域から探す', mainRegions: '公開済みの産地', appellations: 'この地域の呼称', include: '含む', exclude: '除外', add: '条件に追加', addExclude: '除外して追加', explore: '探索する', remove: '削除', close: '閉じる', recent: '最近見た', about: 'このアプリについて / Data & Sources', results: '件の呼称', unknown: '規定情報が不足して判定できない対象があります。', noResults: 'すべての条件に一致する呼称がありません。条件を一つ外して、探索を続けられます。', noCandidates: '一致する候補がありません。別の名称や公式原語で検索できます。', noRecent: 'まだ閲覧した呼称はありません。', noData: 'この公開版には掲載済みの呼称がありません。', original: '公式原語', parent: '所属する呼称', geoNames: 'この呼称の地理的名称', matched: '今回の条件に一致', composition: '品種構成', alcohol: 'アルコール規定', ageing: '熟成規定', sensory: '公式の色・香り・味わい', production: '生産・栽培の詳細', area: '公式生産区域', sources: '出典 / Sources', sourceLink: '公式資料を開く', agency: '出典機関', retrieved: '取得日', verified: '検証日', published: '資料の更新・公開日', version: '公開データ版', raw: '公式原文', evidence: '根拠・原文', minimum: '最低', maximum: '最大', total: '合計', permitted: '使用可能な品種', includeReason: 'この品種を使用する配合が公式規定上可能', excludeReason: 'この品種なしで公式規定を満たせる', excludeHelp: '品種の除外は、その品種を使わずに造れるタイプを探します。「含む」は使用可能を示し、必須とは限りません。除外・複合条件は同時に成立する根拠がある場合だけ一致します。', changed: '品種の除外条件を「含む」に変更しました。', confirmed: '確認済み', no_obligation: 'この義務がないことを公式に確認しています。', not_applicable: 'このワインには適用されません。', not_found: '確認した公式資料では記載を見つけられませんでした。', unverified: 'この項目の確認が完了していません。', retry: '再読み込み', loadFailed: '公開データを読み込めませんでした。', regionSearch: 'この地域を条件に追加', detailInfo: '公式規定を Appellation Explorer が検索・参照用に整理した情報です。', allRules: 'その他の規定', header: '公式規定からワインを探索', sourcesEmpty: '参照できる出典情報がありません。', state: '確認状況', share: '条件をURLで共有できます。', regionContext: '地域の探索経路', aboutText: 'Appellation Explorerは、ワインの公式規定を検索・探索しやすく整理したサービスです。公的機関が運営・保証する公式サービスではありません。', aboutProcess: '公式ウェブページ・登録情報・生産規定等を取得し、項目の抽出、名称・比率・適用条件の整理、検証を行っています。表示名や翻訳と公式原文は区別して保持します。表示と公式資料に違いがある場合は、公式資料を確認してください。', aboutSearch: '品種の検索は規定上使えることを示し、販売中のボトルの配合や生産の実態を保証しません。根拠を確認できた比率や必須条件を詳細に示します。必須性が未確認でも、任意とは断定しません。条件はすべて同じワイン・同じ適用範囲・一つの配合で評価します。', aboutUpdate: '取得・検証・必要な人間判断を経て、明示的に承認された版だけを公開します。取得失敗や確認不足を「規定なし」に置き換えません。各呼称のSourcesから資料・取得日を確認できます。', noRegion: 'この階層に掲載済みの地域がありません。', recentHelp: '閲覧履歴はこの端末にだけ保存されます。', noTranslations: '確認済みの翻訳がない項目は公式原語を表示しています。' },
+  en: { back: 'Back', home: 'Home', title: 'Start with a place. Follow a grape.', intro: 'Explore wine appellations and permitted grapes through official regulations.', search: 'Find appellations, regions, grapes or conditions', country: 'Country', region: 'Region', appellation: 'Appellation', designation: 'Geographic designation', grape: 'Grape', gi: 'EU category', traditional: 'Traditional term', type: 'Wine type', qualifier: 'Official additional term', countries: 'Explore by country', regions: 'Explore regions', mainRegions: 'Published wine regions', appellations: 'Appellations in this region', include: 'Include', exclude: 'Exclude', add: 'Add condition', addExclude: 'Exclude', explore: 'Explore', remove: 'Remove', close: 'Close', recent: 'Recently viewed', about: 'About / Data & Sources', results: 'appellations', unknown: 'Some appellations cannot be evaluated because regulation information is incomplete.', noResults: 'No appellation meets every condition. Remove a condition to continue exploring.', noCandidates: 'No matching suggestions. Try another name or an official original name.', noRecent: 'No appellations viewed yet.', noData: 'This data version contains no published appellations.', original: 'Official original name', parent: 'Appellation', geoNames: 'Geographic names within this appellation', matched: 'Matches your conditions', composition: 'Grape composition', alcohol: 'Alcohol requirements', ageing: 'Ageing requirements', sensory: 'Official colour, aroma and taste', production: 'Production and cultivation', area: 'Official production area', sources: 'Sources', sourceLink: 'Open official source', agency: 'Authority', retrieved: 'Retrieved', verified: 'Verified', published: 'Document update / publication', version: 'Published data version', raw: 'Official original text', evidence: 'Evidence and original text', minimum: 'Minimum', maximum: 'Maximum', total: 'Combined', permitted: 'Permitted grapes', includeReason: 'An officially permitted composition can use this grape', excludeReason: 'A compliant composition can omit this grape', excludeHelp: 'Excluding a grape finds wines that can be made without it. Include means permitted, not necessarily required. Exclusion and combined conditions match only when proved simultaneously possible.', changed: 'The grape condition has changed from exclude to include.', confirmed: 'Confirmed', no_obligation: 'Officially confirmed that this obligation does not apply.', not_applicable: 'Not applicable to this wine.', not_found: 'No statement found in the official documents checked.', unverified: 'Verification of this item is incomplete.', retry: 'Reload', loadFailed: 'Unable to load the published data.', detailInfo: 'Official regulations organised by Appellation Explorer for search and reference.', allRules: 'Other requirements', header: 'Explore wine through official regulations', sourcesEmpty: 'No source information is available.', state: 'Verification', share: 'Share these conditions through the URL.', regionContext: 'Geographic exploration path', aboutText: 'Appellation Explorer organises official wine regulations for search and exploration. It is not an official service operated or endorsed by a public authority.', aboutProcess: 'We retrieve official web pages, registration records and product specifications, extract fields, organise names, ratios and applicability, and validate the results. Display names and translations are stored separately from the original text. If the display differs from an official document, consult the official document.', aboutSearch: 'Grape search describes what the regulations permit. It does not guarantee the composition of a bottle or actual production practice. Details show evidenced ratios and obligations. Unconfirmed mandatory use is not treated as optional. All conditions are evaluated for the same wine, scope and single composition.', aboutUpdate: 'A version is published only after retrieval, validation, any necessary human decisions and an explicit release. Retrieval failures and missing information never become “no requirement”. Each appellation’s Sources lists documents and retrieval dates.', noRegion: 'No published regions at this level.', recentHelp: 'Viewing history is stored only on this device.', noTranslations: 'Fields without verified translations use the official original language.' }
+};
+
+Object.assign(words.ja, { archiveDocument: 'アーカイブ内文書', documentHash: '文書の SHA-256', archiveHash: 'アーカイブの SHA-256', originalIdentity: '原本を識別する情報' });
+Object.assign(words.en, { archiveDocument: 'Document in archive', documentHash: 'Document SHA-256', archiveHash: 'Archive SHA-256', originalIdentity: 'Identify the original document' });
+Object.assign(words.ja, { conditionalChanges: '条件付きの変更', ageingLocation: '熟成場所', actDate: '法令の日付', commencement: '開始の基準', applicabilityUnknown: 'この条件の現在の適用状態は未確認です。公示日を基準とする条件を保持しています。', applicabilityActive: 'この条件が適用されることを確認しています。', applicabilityExpired: 'この条件の適用期間が終了したことを確認しています。' });
+Object.assign(words.en, { conditionalChanges: 'Conditional amendments', ageingLocation: 'Ageing location', actDate: 'Act date', commencement: 'Commencement', applicabilityUnknown: 'Current applicability of this condition is unverified. Its publication-relative conditions are retained.', applicabilityActive: 'This condition is confirmed to apply.', applicabilityExpired: 'This condition is confirmed to have expired.' });
+
+Object.assign(words.ja, { basis_vineyard: '畑の品種構成（植栽）', basis_grapes: '原料葡萄の構成', basis_must: '果汁・果醪の構成', basis_wine: '完成ワインの構成', basis_mixed: '複数の対象段階を含む規定', basis_unknown: '比率の対象段階は未確認', basisNotice: '畑・原料葡萄・果汁・完成ワインの比率は同じものではありません。この規定では、品種の使用可否を判定できない条件が残っています。', sourceUseNotice: '品種の使用可否は、規定されたブドウの由来から判定します。表示比率を完成ワインの配合へ換算していません。植栽上の必須性だけでは、その品種の使用が必須とは断定しません。', listedGrapes: '規定に記載された品種' });
+Object.assign(words.en, { basis_vineyard: 'Vineyard variety composition (planting)', basis_grapes: 'Raw grape composition', basis_must: 'Must composition', basis_wine: 'Finished-wine composition', basis_mixed: 'Rules covering multiple production stages', basis_unknown: 'Ratio basis not yet verified', basisNotice: 'Vineyard, raw grape, must and finished-wine proportions are distinct. Some grape-use conditions remain unresolved under these rules.', sourceUseNotice: 'Grape-use permission follows the stated fruit sources. Displayed ratios are not converted into a finished-wine recipe. Required planting alone does not establish mandatory fruit use.', listedGrapes: 'Grapes listed in the regulation' });
+
+const $ = id => document.getElementById(id);
+const escape = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+const button = (text, action, attributes = '', className = '') => `<button type="button" data-action="${action}" class="${className}" ${attributes}>${escape(text)}</button>`;
+const t = key => words[state.lang][key] ?? key;
+let data;
+let candidates = [];
+let state = readURL();
+let depth = history.state?.ae ? history.state.depth : 0;
+let snapshot = history.state?.ae ? history.state.snapshot : null;
+let overlay = history.state?.ae ? history.state.overlay : null;
+let pendingAfterClose = null;
+let scrollTimer;
+
+function readURL() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  let filters = [];
+  try { filters = JSON.parse(params.get('f') || '[]'); } catch { /* A malformed shared URL starts with no filters. */ }
+  filters = Array.isArray(filters) ? filters.filter(item => ['country', 'region', 'grape', 'gi', 'traditional', 'type', 'qualifier'].includes(item?.kind) && typeof item.id === 'string' && ['include', 'exclude'].includes(item.mode)) : [];
+  return { route: ['home', 'country', 'region', 'appellation', 'designation', 'recent', 'about'].includes(params.get('r')) ? params.get('r') : 'home', id: params.get('id'), query: params.get('q') || '', filters, lang: params.get('lang') === 'en' ? 'en' : 'ja', matchIds: (params.get('w') || '').split(',').filter(Boolean), contextWine: params.get('cw') };
+}
+
+function urlFor(next) {
+  const params = new URLSearchParams();
+  if (next.route !== 'home') params.set('r', next.route);
+  if (next.id) params.set('id', next.id);
+  if (next.filters.length) params.set('f', JSON.stringify(next.filters));
+  if (next.query) params.set('q', next.query);
+  if (next.lang === 'en') params.set('lang', 'en');
+  if (next.matchIds?.length) params.set('w', next.matchIds.join(','));
+  if (next.contextWine) params.set('cw', next.contextWine);
+  return `${location.pathname}${location.search}${params.size ? `#${params}` : ''}`;
+}
+
+function capture() {
+  const input = $('query');
+  return { scroll: window.scrollY, open: [...document.querySelectorAll('main details[open]')].map(item => item.id).filter(Boolean), focus: input === document.activeElement, selection: input ? [input.selectionStart, input.selectionEnd] : null };
+}
+
+function saveEntry() {
+  snapshot = capture();
+  history.replaceState({ ae: true, depth, state, snapshot, overlay }, '', urlFor(state));
+}
+
+function navigate(route, id = null, extra = {}) {
+  saveEntry();
+  state = { ...state, route, id, matchIds: [], contextWine: null, ...extra };
+  depth++;
+  overlay = null;
+  snapshot = { scroll: 0, open: [] };
+  history.pushState({ ae: true, depth, state, snapshot, overlay }, '', urlFor(state));
+  closeDialog();
+  render();
+  window.scrollTo(0, 0);
+  $('main').focus({ preventScroll: true });
+}
+
+function replace(extra, redraw = true) {
+  snapshot = capture();
+  state = { ...state, ...extra };
+  history.replaceState({ ae: true, depth, state, snapshot, overlay }, '', urlFor(state));
+  if (redraw) render();
+}
+
+function restoreSnapshot() {
+  for (const id of snapshot?.open ?? []) if ($(id)) $(id).open = true;
+  requestAnimationFrame(() => {
+    window.scrollTo(0, snapshot?.scroll ?? 0);
+    if (snapshot?.focus && $('query')) {
+      $('query').focus({ preventScroll: true });
+      if (snapshot.selection) $('query').setSelectionRange(...snapshot.selection);
+    }
+  });
+}
+
+function find(kind, id) {
+  const collection = { country: 'countries', region: 'regions', grape: 'grapes', appellation: 'appellations', designation: 'designations' }[kind];
+  return collection ? (data[collection] ?? []).find(item => item.id === id) : candidates.find(item => item.kind === kind && item.id === id);
+}
+const name = entity => displayName(entity, state.lang);
+const original = entity => typeof entity?.name === 'string' ? entity.name : entity?.name?.original;
+const sort = entities => [...entities].sort((a, b) => name(a).localeCompare(name(b), state.lang) || a.id.localeCompare(b.id));
+
+function renderHeader() {
+  const left = state.route === 'home' && depth === 0 ? '<span class="brand">Appellation Explorer</span>' : button(t(depth > 0 ? 'back' : 'home'), depth > 0 ? 'back' : 'home', '', 'quiet');
+  $('header').innerHTML = `${left}<div class="lang" aria-label="Language">${['ja', 'en'].map(lang => button(lang.toUpperCase(), 'language', `data-language="${lang}" aria-pressed="${state.lang === lang}"`)).join('')}</div>`;
+  document.documentElement.lang = state.lang;
+}
+
+function row(entity, kind, meta = '') {
+  return `<button type="button" class="row" data-action="navigate" data-kind="${kind}" data-id="${escape(entity.id)}"><span class="row-title">${escape(name(entity))}</span><span class="row-meta">${escape(meta)}</span></button>`;
+}
+
+function regionNames(app) { return (app.regionIds ?? []).map(id => name(find('region', id))).filter(Boolean).join(' · '); }
+function wineNames(app) {
+  const names = [...new Set((app.wines ?? []).map(wine => name(wine)).filter(Boolean))];
+  return [...names.slice(0, 3), ...(names.length > 3 ? [state.lang === 'ja' ? `ほか${names.length - 3}タイプ` : `+ ${names.length - 3} types`] : [])].join(' · ');
+}
+
+function searchUI() {
+  return `<section class="search-box" aria-label="${escape(t('search'))}"><label for="query" class="search-label">${escape(t('search'))}</label><input type="search" id="query" value="${escape(state.query)}" placeholder="${escape(t('search'))}" autocomplete="off" aria-controls="candidates" aria-expanded="${Boolean(state.query)}"><div id="chips" class="chips"></div><div id="candidates" class="candidates"></div></section><section id="results" aria-live="polite" aria-atomic="false"></section>`;
+}
+
+function homeHTML() {
+  return `<p class="eyebrow">Appellation Explorer</p><h1>${escape(t('title'))}</h1><p class="intro">${escape(t('intro'))}</p>${searchUI()}<section><h2>${escape(t('countries'))}</h2><div class="country-grid">${sort(data.countries ?? []).map(entity => row(entity, 'country', t('country'))).join('')}</div></section><section><h2>${escape(t('mainRegions'))}</h2><div class="region-grid">${sort((data.regions ?? []).filter(region => !region.parentId && (data.appellations ?? []).some(app => regionBelongs(data, app.regionIds, region.id)))).map(entity => row(entity, 'region', name(find('country', entity.countryId)))).join('')}</div></section><p>${button(t('recent'), 'navigate', 'data-kind="recent"', 'quiet')}</p>${aboutLink()}`;
+}
+
+function regionHTML() {
+  const entity = find(state.route, state.id);
+  if (!entity) return `<p class="empty">${escape(t('noRegion'))}</p>`;
+  const path = [];
+  if (state.route === 'region') {
+    let current = entity;
+    const seen = new Set();
+    while (current && !seen.has(current.id)) { path.unshift(current); seen.add(current.id); current = find('region', current.parentId); }
+  }
+  const country = state.route === 'country' ? entity : find('country', entity.countryId);
+  const children = (data.regions ?? []).filter(region => state.route === 'country' ? region.countryId === entity.id && !region.parentId : region.parentId === entity.id);
+  const apps = (data.appellations ?? []).filter(app => state.route === 'country' ? app.countryId === entity.id : regionBelongs(data, app.regionIds, entity.id));
+  return `<p class="eyebrow">${escape(t(state.route))}</p><h1>${escape(name(entity))}</h1>${original(entity) !== name(entity) ? `<p class="original">${escape(original(entity))}</p>` : ''}<nav class="path" aria-label="${escape(t('regionContext'))}">${country ? button(name(country), 'navigate', `data-kind="country" data-id="${escape(country.id)}"`, 'quiet') : ''}${path.map(item => `<span aria-hidden="true">›</span>${button(name(item), 'navigate', `data-kind="region" data-id="${escape(item.id)}"`, 'quiet')}`).join('')}</nav>${searchUI()}${state.route === 'region' ? button(t('regionSearch'), 'add-filter', `data-kind="region" data-id="${escape(entity.id)}"`, 'quiet') : ''}${children.length ? `<section><h2>${escape(t('regions'))}</h2><div class="region-grid">${sort(children).map(item => row(item, 'region', t('region'))).join('')}</div></section>` : ''}<section><h2>${escape(t('appellations'))}</h2>${sort(apps).map(app => row(app, 'appellation', [regionNames(app), app.gi, ...(app.traditionalTerms ?? []), app.level, wineNames(app)].filter(Boolean).join(' · '))).join('') || `<p class="empty">${escape(t('noData'))}</p>`}</section>${aboutLink()}`;
+}
+
+function renderChips() {
+  if (!$('chips')) return;
+  $('chips').innerHTML = state.filters.map((filter, index) => button(`${t(filter.mode)}: ${name(find(filter.kind, filter.id)) || filter.id}`, 'chip-menu', `data-index="${index}" aria-haspopup="dialog"`, `chip ${filter.mode}`)).join('');
+}
+
+function candidateMeta(candidate) {
+  if (candidate.kind === 'designation') return [candidate.qualification, name(find('appellation', candidate.appellationId))].filter(Boolean).join(' · ');
+  if (candidate.kind === 'appellation') return [name(find('country', candidate.countryId)), ...(candidate.regionIds ?? []).map(id => name(find('region', id)))].filter(Boolean).join(' · ');
+  if (candidate.kind === 'region') return [name(find('country', candidate.countryId)), name(find('region', candidate.parentId))].filter(Boolean).join(' · ');
+  return t(candidate.kind);
+}
+
+function renderCandidates() {
+  if (!$('candidates')) return;
+  const found = findCandidates(data, state.query, state.lang);
+  const groups = new Map();
+  for (const candidate of found) { if (!groups.has(candidate.kind)) groups.set(candidate.kind, []); groups.get(candidate.kind).push(candidate); }
+  $('candidates').innerHTML = [...groups].map(([kind, values]) => `<section class="candidate-group"><h3>${escape(t(kind))}</h3>${values.map(candidate => {
+    const attributes = `data-kind="${kind}" data-id="${escape(candidate.id)}"`;
+    const isDetail = ['appellation', 'designation'].includes(kind);
+    return `<div class="candidate"><button type="button" class="candidate-name" data-action="${isDetail || kind === 'region' ? 'candidate-navigate' : 'add-filter'}" ${attributes}><span>${escape(name(candidate))}</span><small>${escape(candidateMeta(candidate))}</small>${kind === 'region' ? `<small>${escape(t('explore'))} ›</small>` : ''}</button><div class="candidate-actions">${isDetail ? '' : `${kind === 'region' ? button(t('add'), 'add-filter', attributes) : ''}${button(t('addExclude'), 'add-filter', `${attributes} data-mode="exclude"`)}`}</div></div>`;
+  }).join('')}</section>`).join('') || (state.query.trim() ? `<p class="muted">${escape(t('noCandidates'))}</p>` : '');
+  $('query').setAttribute('aria-expanded', String(Boolean(state.query.trim())));
+}
+
+function renderResults() {
+  if (!$('results')) return;
+  if (!state.filters.length) { $('results').innerHTML = ''; return; }
+  const { results, unknownCount } = searchAppellations(data, state.filters);
+  results.sort((a, b) => name(a.appellation).localeCompare(name(b.appellation), state.lang));
+  $('results').innerHTML = `<div class="results-count"><strong>${results.length} ${escape(t('results'))}</strong><small>${escape(t('share'))}</small></div>${state.filters.some(filter => filter.kind === 'grape') ? `<p class="muted"><small>${escape(t('excludeHelp'))}</small></p>` : ''}${unknownCount ? `<p class="notice">${escape(t('unknown'))} (${unknownCount})</p>` : ''}${results.length ? results.map(result => {
+    const app = result.appellation;
+    const ownIds = result.matches.filter(match => !match.designation).map(match => match.wine.id);
+    return `${rowWithMatch(app, ownIds)}${result.matches.map(match => `<div class="result-match"><strong>${escape(name(match.wine))}</strong>${match.wine.scope ? ` · ${escape(match.wine.scope)}` : ''}${match.designation ? ` · ${button(name(match.designation), 'open-match', `data-kind="designation" data-id="${escape(match.designation.id)}" data-wines="${escape(match.wine.id)}"`, 'quiet')}` : ''}${match.reasons.map(reason => `<p class="row-reason">${escape(name(find('grape', reason.grapeId)))} — ${escape(t(reason.mode === 'exclude' ? 'excludeReason' : 'includeReason'))}</p>`).join('')}${match.reasons.length && match.wine.grapeRule?.original ? `<p class="muted"><small>${escape(match.wine.grapeRule.original)}</small></p>` : ''}</div>`).join('')}`;
+  }).join('') : `<p class="empty">${escape(t('noResults'))}</p>`}`;
+}
+
+function rowWithMatch(app, ids) {
+  return `<button type="button" class="row" data-action="open-match" data-kind="appellation" data-id="${escape(app.id)}" data-wines="${escape(ids.join(','))}"><span class="row-title">${escape(name(app))}</span><span class="row-meta">${escape([regionNames(app), app.gi, ...(app.traditionalTerms ?? [])].filter(Boolean).join(' · '))}</span></button>`;
+}
+
+function aboutLink() { return `<p class="footer-link">${button(t('about'), 'navigate', 'data-kind="about"', 'quiet')}</p>`; }
+
+function evidenceHTML(evidence, id) {
+  if (!evidence?.length) return '';
+  return `<details class="evidence" id="e-${escape(id)}"><summary>${escape(t('evidence'))}</summary>${evidence.map(item => {
+    const source = (data.sources ?? []).find(source => source.id === item.sourceId);
+    return `<p>${escape(source?.agency ?? '')} · ${escape(source?.title ?? '')} · ${escape(item.locator ?? '')}</p>${item.conditions ? `<p>${escape(item.conditions)}</p>` : ''}<blockquote>${escape(item.quote ?? '')}</blockquote>${source ? sourceAnchor(source) : ''}`;
+  }).join('')}</details>`;
+}
+
+function sourceAnchor(source) {
+  try { const url = new URL(source.url); if (['https:', 'http:'].includes(url.protocol)) return `<a href="${escape(url.href)}" rel="external">${escape(t('sourceLink'))}</a>`; } catch { /* Invalid source links are not clickable. */ }
+  return '';
+}
+
+function grapeLink(id) {
+  const grape = find('grape', id);
+  return grape ? button(name(grape), 'grape-link', `data-id="${escape(id)}"`, 'grape-link') : escape(id);
+}
+
+function ratioHTML(constraint) {
+  if (constraint.min === constraint.max && constraint.min != null && !constraint.minExclusive) return `${escape(constraint.min)}%`;
+  const minimum = constraint.min != null ? constraint.minExclusive ? `&gt; ${escape(constraint.min)}%` : `${escape(t('minimum'))} ${escape(constraint.min)}%` : '';
+  const maximum = constraint.max != null ? `${escape(t('maximum'))} ${escape(constraint.max)}%` : '';
+  return [minimum, maximum].filter(Boolean).join(' / ');
+}
+
+function grapeHTML(rule, prefix) {
+  if (!rule) return `<p class="muted">${escape(t('unverified'))}</p>`;
+  const rules = rule.alternatives ?? [rule];
+  const usage = evaluateGrapeUse(rule);
+  return (usage.basis === 'grape-source' ? `<p class="ratio-basis-notice">${escape(t('sourceUseNotice'))}</p>` : usage.status === 'unknown' ? `<p class="ratio-basis-notice">${escape(t('basisNotice'))}</p>` : '') + rules.map((alternative, index) => `<div>${index && rule.alternatives ? '<p>— / —</p>' : ''}${(alternative.constraints ?? []).map(constraint => `<p><small class="ratio-basis">${escape(t('basis_' + ratioBasis(alternative, constraint)))}</small><br>${constraint.grapeIds.length > 1 ? `${escape(t('total'))} ` : ''}${constraint.grapeIds.map(grapeLink).join(' + ')}: ${ratioHTML(constraint)}</p>`).join('')}${alternative.grapeIds?.length ? `<p><small>${escape(t(grapeUsePermissionProved(alternative) ? 'permitted' : 'listedGrapes'))}: </small>${alternative.grapeIds.map(grapeLink).join(' · ')}</p>` : ''}</div>`).join('') + (rule.original ? `<details id="raw-${escape(prefix)}"><summary>${escape(t('raw'))}</summary><p>${escape(rule.original)}</p></details>` : '') + evidenceHTML(rule.evidence, `${prefix}-grapes`);
+}
+
+function valueText(value) {
+  if (typeof value === 'string') return value;
+  if (value?.original) return value.original;
+  if (value?.text) return typeof value.text === 'string' ? value.text : value.text[state.lang] || value.text.original || '';
+  return '';
+}
+
+function optionalHTML(field, key, prefix) {
+  let body = '';
+  const current = field ?? { state: 'unverified' };
+  const evidence = new Map((current.evidence ?? []).map(item => [JSON.stringify(item), item]));
+  if (current.state !== 'confirmed') body += `<p class="muted">${escape(t(current.state ?? 'unverified'))}</p>`;
+  if (current.values?.length) body += current.values.map((value, index) => {
+    let text = valueText(value);
+    if (key === 'alcohol' && value.value != null) text = `${value.originalMetric || value.metric}: ${value.value}${value.unit ?? '% vol'}${value.conditions ? ` · ${value.conditions}` : ''}`;
+    if (key === 'ageing') {
+      const parts = [value.months != null ? `${value.months} ${state.lang === 'ja' ? 'か月' : 'months'}` : '', value.container, value.start, value.relation, value.conditions].filter(Boolean);
+      text = [text, ...parts.filter(part => !text.includes(String(part)))].filter(Boolean).join(' · ');
+    }
+    for (const item of value.evidence ?? []) evidence.set(JSON.stringify(item), item);
+    return text ? `<p>${escape(text)}</p>` : '';
+  }).join('');
+  if (current.original) body += `<p>${escape(current.original)}</p>`;
+  body += evidenceHTML([...evidence.values()], `${prefix}-${key}`);
+  return `<div class="rule"><span class="rule-label">${escape(t(key))}</span>${body}</div>`;
+}
+
+function wineHTML(wine, matched) {
+  return `<article class="wine ${matched ? 'matched' : ''}" id="wine-${escape(wine.id)}" data-wine-id="${escape(wine.id)}">${matched ? `<span class="matched-label">${escape(t('matched'))}</span>` : ''}<h2>${escape(name(wine))}</h2>${wine.scope ? `<p class="meta-line">${escape(wine.scope)}</p>` : ''}<div class="rule"><span class="rule-label">${escape(t('composition'))}</span>${grapeHTML(wine.grapeRule, wine.id)}</div>${optionalHTML(wine.alcohol, 'alcohol', wine.id)}${optionalHTML(wine.ageing, 'ageing', wine.id)}<details id="long-${escape(wine.id)}"><summary>${escape(t('allRules'))}</summary>${optionalHTML(wine.sensory, 'sensory', wine.id)}${optionalHTML(wine.production, 'production', wine.id)}${optionalHTML(wine.area, 'area', wine.id)}</details>${evidenceHTML(wine.evidence, `${wine.id}-identity`)}</article>`;
+}
+
+function sourcesHTML(entity) {
+  const sourceIds = new Set();
+  const collect = item => {
+    if (!item || typeof item !== 'object') return;
+    if (item.sourceId) sourceIds.add(item.sourceId);
+    for (const id of item.sourceIds ?? []) sourceIds.add(id);
+    for (const child of Object.values(item)) if (child && typeof child === 'object') Array.isArray(child) ? child.forEach(collect) : collect(child);
+  };
+  collect(entity);
+  const sources = (data.sources ?? []).filter(item => sourceIds.has(item.id));
+  return `<section id="sources"><h2>${escape(t('sources'))}</h2>${sources.map(source => `<article class="source"><strong>${escape(source.title)}</strong><dl><dt>${escape(t('agency'))}</dt><dd>${escape(source.agency)}</dd>${source.archiveMember ? `<dt>${escape(t('archiveDocument'))}</dt><dd>${escape(source.archiveMember)}</dd>` : ''}${source.publishedAt ? `<dt>${escape(t('published'))}</dt><dd>${escape(source.publishedAt)}</dd>` : ''}<dt>${escape(t('retrieved'))}</dt><dd>${escape(source.retrievedAt ?? '')}</dd>${source.verifiedAt ? `<dt>${escape(t('verified'))}</dt><dd>${escape(source.verifiedAt)}</dd>` : ''}</dl>${sourceAnchor(source)}${sourceIdentityHTML(source)}</article>`).join('') || `<p class="muted">${escape(t('sourcesEmpty'))}</p>`}${evidenceHTML(entity.evidence, `${entity.id}-sources`)}</section>`;
+}
+
+function sourceIdentityHTML(source) {
+  return `<details id="source-identity-${escape(source.id)}"><summary>${escape(t('originalIdentity'))}</summary><dl><dt>${escape(t('documentHash'))}</dt><dd>${escape(source.sha256)}</dd>${source.archiveHash ? `<dt>${escape(t('archiveHash'))}</dt><dd>${escape(source.archiveHash)}</dd>` : ''}</dl></details>`;
+}
+
+function conditionalAmendmentsHTML(entity) {
+  if (!entity.conditionalAmendments?.length) return '';
+  return `<section class="conditional-amendments"><h2>${escape(t('conditionalChanges'))}</h2>${entity.conditionalAmendments.map((amendment, index) => {
+    const applicability = typeof amendment.applicability === 'object' ? amendment.applicability.state : amendment.applicability;
+    const stateLabel = applicability === 'active' ? 'applicabilityActive' : applicability === 'expired' ? 'applicabilityExpired' : 'applicabilityUnknown';
+    const duration = amendment.conditions?.maximumDuration;
+    const durationText = duration?.years != null && duration.reference === 'publication of this decree' ? state.lang === 'ja' ? `この法令の公示から最大${duration.years}年` : `At most ${duration.years} year${duration.years === 1 ? '' : 's'} from publication of this decree` : duration?.original || '';
+    const articleText = amendment.article != null ? state.lang === 'ja' ? `第${amendment.article}条${amendment.afterParagraph ? `・第${amendment.afterParagraph}段落の後` : ''}` : `Article ${amendment.article}${amendment.afterParagraph ? `, after paragraph ${amendment.afterParagraph}` : ''}` : '';
+    return `<article class="rule"><h3>${escape(amendment.affectedField === 'ageing.location' ? t('ageingLocation') : t('conditionalChanges'))}</h3>${articleText ? `<p class="meta-line">${escape(articleText)}</p>` : ''}<p class="notice">${escape(t(stateLabel))}</p>${amendment.actDate ? `<p>${escape(t('actDate'))}: ${escape(amendment.actDate)}</p>` : ''}${amendment.conditions?.commencement ? `<p>${escape(t('commencement'))}: ${escape(amendment.conditions.commencement)}</p>` : ''}${durationText ? `<p>${escape(durationText)}</p>` : ''}<details id="conditional-${escape(entity.id)}-${index}"><summary>${escape(t('raw'))}</summary><p>${escape(amendment.original)}</p>${amendment.conditions?.original ? `<p>${escape(amendment.conditions.original)}</p>` : ''}${amendment.contextOriginal ? `<p>${escape(amendment.contextOriginal)}</p>` : ''}</details>${evidenceHTML(amendment.evidence, `${entity.id}-conditional-${index}`)}</article>`;
+  }).join('')}</section>`;
+}
+
+function detailsHTML() {
+  const entity = find(state.route, state.id);
+  if (!entity) return `<p class="empty">${escape(t('noData'))}</p>`;
+  const parent = state.route === 'designation' ? find('appellation', entity.appellationId) : entity;
+  recordRecent(state.route, entity.id);
+  const wines = [...(entity.wines ?? [])].sort((a, b) => Number(state.matchIds.includes(b.id)) - Number(state.matchIds.includes(a.id)));
+  return `<p class="eyebrow">${escape(t(state.route))}${entity.qualification ? ` · ${escape(entity.qualification)}` : ''}</p><h1>${escape(name(entity))}</h1>${original(entity) !== name(entity) ? `<p class="original">${escape(original(entity))}</p>` : ''}<p class="meta-line">${escape([name(find('country', parent?.countryId)), regionNames(parent ?? {}), state.route === 'appellation' ? parent?.gi : '', ...(state.route === 'appellation' ? parent?.traditionalTerms ?? [] : []), entity.level].filter(Boolean).join(' · '))}</p>${state.route === 'designation' && parent ? `<p>${escape(t('parent'))}: ${button(name(parent), 'navigate', `data-kind="appellation" data-id="${escape(parent.id)}"`, 'quiet')}</p>` : ''}<p class="notice">${escape(t('detailInfo'))} <a href="#sources" data-action="sources-jump">${escape(t('sources'))}</a></p>${conditionalAmendmentsHTML(entity)}<div class="wines">${wines.map(wine => wineHTML(wine, state.matchIds.includes(wine.id))).join('')}</div>${state.route === 'appellation' ? designationList(entity) : ''}${sourcesHTML(entity)}${aboutLink()}`;
+}
+
+function designationList(entity) {
+  const entries = (data.designations ?? []).filter(item => item.appellationId === entity.id);
+  return entries.length ? `<section><h2>${escape(t('geoNames'))}</h2>${sort(entries).map(item => row(item, 'designation', [t('designation'), item.qualification].filter(Boolean).join(' · '))).join('')}</section>` : '';
+}
+
+function getRecent() {
+  try { return JSON.parse(localStorage.getItem('ae-recent-v1') ?? '[]').filter(item => item && Date.now() - item.at < 30 * 86400000 && find(item.kind, item.id)); } catch { return []; }
+}
+function recordRecent(kind, id) {
+  try { localStorage.setItem('ae-recent-v1', JSON.stringify([{ kind, id, at: Date.now() }, ...getRecent().filter(item => item.id !== id || item.kind !== kind)].slice(0, 20))); } catch { /* Private browsing can disable storage without disabling the app. */ }
+}
+
+function recentHTML() {
+  const recent = getRecent();
+  return `<h1>${escape(t('recent'))}</h1><p class="muted">${escape(t('recentHelp'))}</p>${recent.map(item => { const entity = find(item.kind, item.id); return row(entity, item.kind, [t(item.kind), item.kind === 'designation' ? name(find('appellation', entity.appellationId)) : regionNames(entity)].filter(Boolean).join(' · ')); }).join('') || `<p class="empty">${escape(t('noRecent'))}</p>`}`;
+}
+
+function aboutHTML() {
+  return `<div class="about"><p class="eyebrow">Data & Sources</p><h1>${escape(t('about'))}</h1><p>${escape(t('aboutText'))}</p><p>${escape(t('aboutProcess'))}</p><p>${escape(t('aboutSearch'))}</p><p>${escape(t('aboutUpdate'))}</p><p class="notice">${escape(t('noTranslations'))}</p><dl><dt>${escape(t('version'))}</dt><dd>${escape(data.version)}</dd></dl><h2>${escape(t('sources'))}</h2>${(data.sources ?? []).map(source => `<article class="source"><p>${escape(source.agency)} · ${escape(source.title)}<br>${sourceAnchor(source)}</p>${source.archiveMember ? `<dl><dt>${escape(t('archiveDocument'))}</dt><dd>${escape(source.archiveMember)}</dd></dl>` : ''}${sourceIdentityHTML(source)}</article>`).join('')}</div>`;
+}
+
+function render() {
+  if (!data) return;
+  renderHeader();
+  $('main').innerHTML = state.route === 'home' ? homeHTML() : ['country', 'region'].includes(state.route) ? regionHTML() : ['appellation', 'designation'].includes(state.route) ? detailsHTML() : state.route === 'recent' ? recentHTML() : aboutHTML();
+  document.title = `${['appellation', 'designation', 'region', 'country'].includes(state.route) ? name(find(state.route, state.id)) + ' · ' : ''}Appellation Explorer`;
+  renderChips(); renderCandidates(); renderResults(); restoreSnapshot();
+  if (overlay) renderOverlay();
+}
+
+function openMenu(index) {
+  saveEntry();
+  overlay = { type: 'chip', index };
+  depth++;
+  history.pushState({ ae: true, depth, state, snapshot, overlay }, '', urlFor(state));
+  renderOverlay();
+}
+
+function renderOverlay() {
+  if (overlay?.type !== 'chip') return;
+  const filter = state.filters[overlay.index];
+  if (!filter) { closeDialog(); return; }
+  $('sheet').innerHTML = `<div class="sheet-head"><strong>${escape(name(find(filter.kind, filter.id)))}</strong>${button(t('close'), 'close-overlay')}</div><div class="sheet-body">${filter.kind === 'grape' ? `<p>${escape(t('excludeHelp'))}</p>` : ''}<div class="menu-options">${button(t('include'), 'change-filter', 'data-mode="include"')}${button(t('exclude'), 'change-filter', 'data-mode="exclude"')}${button(t('remove'), 'change-filter', 'data-mode="remove"')}</div></div>`;
+  if (!$('sheet').open) $('sheet').showModal();
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDialog() {
+  if ($('sheet').open) $('sheet').close();
+  document.body.style.overflow = '';
+}
+
+function toast(text) {
+  $('toast').textContent = text;
+  setTimeout(() => { $('toast').textContent = ''; }, 4000);
+}
+
+function addFilter(kind, id, mode = 'include') {
+  const candidate = find(kind, id) ?? { kind, id };
+  replace({ filters: upsertFilter(state.filters, { ...candidate, kind, id }, mode) }, false);
+  renderChips(); renderResults();
+}
+
+document.addEventListener('click', event => {
+  const target = event.target.closest('[data-action]');
+  if (!target || !data) return;
+  const { action, id, kind } = target.dataset;
+  if (action === 'back') history.back();
+  else if (action === 'home') navigate('home');
+  else if (action === 'navigate' || action === 'candidate-navigate') navigate(kind, id || null);
+  else if (action === 'open-match') navigate(kind, id, { matchIds: (target.dataset.wines || '').split(',').filter(Boolean) });
+  else if (action === 'language') replace({ lang: target.dataset.language });
+  else if (action === 'add-filter') addFilter(kind, id, target.dataset.mode || 'include');
+  else if (action === 'chip-menu') openMenu(Number(target.dataset.index));
+  else if (action === 'close-overlay') history.back();
+  else if (action === 'change-filter') {
+    const index = overlay.index;
+    const mode = target.dataset.mode;
+    pendingAfterClose = () => {
+      const filters = mode === 'remove' ? state.filters.filter((_, i) => i !== index) : state.filters.map((filter, i) => i === index ? { ...filter, mode } : filter);
+      replace({ filters }, false); renderChips(); renderResults();
+    };
+    history.back();
+  } else if (action === 'grape-link') {
+    const wasExclude = state.filters.some(item => item.kind === 'grape' && item.id === id && item.mode === 'exclude');
+    navigate('home', null, { filters: upsertFilter(state.filters, { kind: 'grape', id }, 'include') });
+    if (wasExclude) toast(t('changed'));
+  } else if (action === 'sources-jump') {
+    event.preventDefault(); $('sources')?.scrollIntoView(); saveEntry();
+  }
+});
+
+document.addEventListener('input', event => {
+  if (event.target.id !== 'query') return;
+  replace({ query: event.target.value }, false);
+  renderCandidates();
+});
+
+document.addEventListener('toggle', event => {
+  if (event.target.tagName === 'DETAILS' && !overlay) saveEntry();
+}, true);
+
+$('sheet').addEventListener('cancel', event => { event.preventDefault(); history.back(); });
+window.addEventListener('scroll', () => { clearTimeout(scrollTimer); scrollTimer = setTimeout(() => { if (!overlay) saveEntry(); }, 100); }, { passive: true });
+window.addEventListener('popstate', event => {
+  if (event.state?.ae) {
+    state = event.state.state; depth = event.state.depth; snapshot = event.state.snapshot; overlay = event.state.overlay;
+  } else { state = readURL(); depth = 0; snapshot = null; overlay = null; }
+  closeDialog(); render();
+  if (pendingAfterClose) { const callback = pendingAfterClose; pendingAfterClose = null; callback(); }
+});
+window.addEventListener('pagehide', saveEntry);
+
+async function start() {
+  try {
+    const response = await fetch('./data.json', { cache: 'no-cache' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    data = await response.json();
+    if (data.schemaVersion !== 1 || !Array.isArray(data.appellations)) throw new Error('Unsupported data schema');
+    candidates = buildCandidates(data);
+    render();
+    history.replaceState({ ae: true, depth, state, snapshot: snapshot || capture(), overlay }, '', urlFor(state));
+  } catch (error) {
+    renderHeader();
+    $('main').innerHTML = `<h1>${escape(t('loadFailed'))}</h1><p>${escape(error.message)}</p>${button(t('retry'), 'reload')}`;
+    document.querySelector('[data-action=reload]').addEventListener('click', () => location.reload());
+  }
+}
+
+start();
