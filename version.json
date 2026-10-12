@@ -1,15 +1,15 @@
 {
-  "artifactVersion": "9bd511c8b3c2bafe6a9d",
+  "artifactVersion": "5d1ff83b625156e081b2",
   "counts": {
     "appellations": 8,
     "designations": 0,
     "regions": 2
   },
-  "dataVersion": "3bc83767f43fd567dac3",
+  "dataVersion": "29ce4536cbecf9316f24",
   "files": {
     ".nojekyll": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "app.js": "faa4a98aad82cde0e878a33e8b5d4bbd75472d05df6686d89c4c083946694cdb",
-    "data.json": "f7001e3b1e6bd6b7e66ce0cb46ba7f6ab5b59b79f4ca630599eac4783af56cf8",
+    "data.json": "5e546c55bc342c9737b4ba4c0327469d602489c7c7a7cecae7f19e0ecbdda153",
     "index.html": "d86928025be4608eef55381b996c0155d94ae8738249570b0ab4dab3746f9e5c",
     "lib/blend.mjs": "bb7f33db215d47c304368e52295ccdebe39681f819c0b096a7533955368d8614",
     "lib/display-names.mjs": "c509ecec07e04a8bb7c04228a981045e4829db0ccfdde69a33adac04a7942d28",
