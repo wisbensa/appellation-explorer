@@ -8,3 +8,10 @@
 
 .type-links{display:flex;flex-wrap:wrap;gap:.5rem}.type-links a{display:flex;align-items:center;min-height:44px;padding:.5rem .7rem;border:1px solid var(--line);border-radius:.5rem;overflow-wrap:anywhere}.wine,#type-index,#shared-regulations,#alcohol-guide{scroll-margin-top:1rem}.home-region{min-width:0}.home-region>.row:not(:first-child){font-size:.9rem;padding-left:1rem}.duty-proof{font-size:.9rem}
 .result-match{display:inline-block;padding:.2rem .65rem .2rem 0;border:0;vertical-align:top}
+
+/* Source evidence is reached through one closed disclosure at the detail footer. */
+.sources-disclosure { margin-top: 2rem; border-top: 1px solid var(--line, #ccc); padding-top: .75rem; }
+.sources-disclosure > summary { min-height: 44px; padding-block: .65rem; font-weight: 600; }
+.reference-group { margin-block: 2rem; }
+.reference-field { border-top: 1px solid var(--line, #ccc); padding-block: .5rem; }
+.reference-field h4 { margin-block: .6rem; }

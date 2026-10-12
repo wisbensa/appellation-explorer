@@ -1,5 +1,5 @@
 {
-  "artifactVersion": "5d1ff83b625156e081b2",
+  "artifactVersion": "be6a3cfbce8023533f65",
   "counts": {
     "appellations": 8,
     "designations": 0,
@@ -8,15 +8,15 @@
   "dataVersion": "29ce4536cbecf9316f24",
   "files": {
     ".nojekyll": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "app.js": "faa4a98aad82cde0e878a33e8b5d4bbd75472d05df6686d89c4c083946694cdb",
+    "app.js": "ee68d0c09cfad8da09a84ffbdd01866d9852027c096a0ff6d7b8bb3406b019a7",
     "data.json": "5e546c55bc342c9737b4ba4c0327469d602489c7c7a7cecae7f19e0ecbdda153",
     "index.html": "d86928025be4608eef55381b996c0155d94ae8738249570b0ab4dab3746f9e5c",
-    "lib/blend.mjs": "bb7f33db215d47c304368e52295ccdebe39681f819c0b096a7533955368d8614",
+    "lib/blend.mjs": "713d2ec479b150c23ed25d03ee10927d4f2372b731e78d499fbbef761b0c23fc",
     "lib/display-names.mjs": "c509ecec07e04a8bb7c04228a981045e4829db0ccfdde69a33adac04a7942d28",
     "lib/field-integrity.mjs": "0153d6edc15f1e7e006f428ab02d0090177ea8eafdb661308b121abe379f2524",
     "lib/regulation-explanations.mjs": "7d064124b1dc57a4589441823e7268f1264560eb19f811d7a143418103081bca",
-    "lib/search.mjs": "fafaad2f95d25f10953d8960c1bd2ea5d63a670258bd8a21b59844b397d136b9",
-    "styles.css": "dcbab57070d4e72300ae456fd327d729794371cbd1c0aad0f027d85749ec91e2"
+    "lib/search.mjs": "4234f9ecea02cf7ad4beeecd8baf6d47bfe40c9464be91b2184d40437d7afc6d",
+    "styles.css": "c7b61393a865796790f2382bcb7038c1d6cc5440d3d4d8a5a6a5e2dc5047a72a"
   },
   "fixture": false,
   "schemaVersion": 1
