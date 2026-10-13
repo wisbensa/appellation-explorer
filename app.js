@@ -25,7 +25,7 @@ const button = (text, action, attributes = '', className = '') => `<button type=
 const t = key => words[state.lang][key] ?? key;
 let data;
 let candidates = [];
-let state = readURL();
+let state = history.state?.ae ? history.state.state : readURL();
 let preferredLanguage = state.lang;
 let candidateLimit = 12;
 let candidatesHidden = false;
@@ -44,7 +44,7 @@ function readURL() {
   const rawFilters = filters;
   filters = Array.isArray(filters) ? filters.filter(item => ['country', 'region', 'grape', 'gi', 'traditional', 'type', 'qualifier'].includes(item?.kind) && typeof item.id === 'string' && ['include', 'exclude'].includes(item.mode)) : [];
   invalidLink ||= params.has('invalid') || !Array.isArray(rawFilters) || rawFilters.length !== filters.length;
-  return { invalidLink, route: ['home', 'country', 'region', 'appellation', 'designation', 'recent', 'about'].includes(params.get('r')) ? params.get('r') : 'home', id: params.get('id'), query: params.get('q') || '', filters, lang: params.get('lang') === 'en' ? 'en' : 'ja', matchIds: (params.get('w') || '').split(',').filter(Boolean), contextWine: params.get('cw') };
+  return { invalidLink, route: ['home', 'country', 'region', 'appellation', 'designation', 'recent', 'about'].includes(params.get('r')) ? params.get('r') : 'home', id: params.get('id'), query: params.get('q') || '', filters, lang: params.get('lang') === 'en' ? 'en' : 'ja', matchIds: (params.get('w') || '').split(',').filter(Boolean), contextWine: params.get('cw'), originScope: ['country','region'].includes(params.get('sr')) ? {route:params.get('sr'),id:params.get('si')} : null };
 }
 
 function urlFor(next) {
@@ -53,16 +53,17 @@ function urlFor(next) {
   if (next.id) params.set('id', next.id);
   if (next.invalidLink) params.set('invalid', '1');
   if (next.filters.length) params.set('f', JSON.stringify(next.filters));
-  if (next.query) params.set('q', next.query);
+  // Draft text belongs to local history, never to a shared condition URL.
   if (next.lang === 'en') params.set('lang', 'en');
-  if (next.matchIds?.length) params.set('w', next.matchIds.join(','));
+  // Matching types are recomputed, not serialized as trusted search state.
   if (next.contextWine) params.set('cw', next.contextWine);
+  if (next.originScope) { params.set('sr',next.originScope.route); params.set('si',next.originScope.id); }
   return `${location.pathname}${location.search}${params.size ? `#${params}` : ''}`;
 }
 
 function capture() {
   const input = $('query');
-  return { scroll: window.scrollY, open: [...document.querySelectorAll('main details[open]')].map(item => item.id).filter(Boolean), focus: input === document.activeElement, selection: input ? [input.selectionStart, input.selectionEnd] : null };
+  return { scroll: window.scrollY, open: [...document.querySelectorAll('main details[open]')].map(item => item.id).filter(Boolean), focus: input === document.activeElement, selection: input ? [input.selectionStart, input.selectionEnd] : null, grapeQueries: [...document.querySelectorAll('[data-grape-search]')].map(input => [input.id, input.value]) };
 }
 
 function saveEntry() {
@@ -72,7 +73,7 @@ function saveEntry() {
 
 function navigate(route, id = null, extra = {}) {
   saveEntry();
-  state = { ...state, route, id, matchIds: [], contextWine: null, ...extra };
+  state = { ...state, originScope: ['appellation','designation'].includes(route) ? ['region','country'].includes(state.route) ? {route:state.route,id:state.id} : ['appellation','designation'].includes(state.route) ? state.originScope : null : null, route, id, matchIds: [], contextWine: null, ...extra };
   depth++;
   overlay = null;
   snapshot = { scroll: 0, open: [] };
@@ -86,14 +87,16 @@ function navigate(route, id = null, extra = {}) {
 function replace(extra, redraw = true) {
   snapshot = capture();
   state = { ...state, ...extra };
+  state.filters = state.filters.filter(f=>!(f.kind===state.route && f.id===state.id && f.mode==='include'));
   history.replaceState({ ae: true, depth, state, snapshot, overlay }, '', urlFor(state));
   if (redraw) render();
 }
 
 function restoreSnapshot() {
+  for (const [id, value] of snapshot?.grapeQueries ?? []) if ($(id)) { $(id).value = value; filterGrapeList($(id)); }
   for (const id of snapshot?.open ?? []) if ($(id)) $(id).open = true;
   requestAnimationFrame(() => {
-    window.scrollTo(0, snapshot?.scroll ?? 0);
+    if (state.contextWine && !snapshot?.scroll) { const target = $('wine-' + state.contextWine); target?.focus({preventScroll:true}); target?.scrollIntoView({block:'start'}); } else window.scrollTo(0, snapshot?.scroll ?? 0);
     if (snapshot?.focus && $('query')) {
       $('query').focus({ preventScroll: true });
       if (snapshot.selection) $('query').setSelectionRange(...snapshot.selection);
@@ -105,6 +108,9 @@ function find(kind, id) {
   const collection = { country: 'countries', region: 'regions', grape: 'grapes', appellation: 'appellations', designation: 'designations' }[kind];
   return collection ? (data[collection] ?? []).find(item => item.id === id) : candidates.find(item => item.kind === kind && item.id === id) ?? data.candidates?.find(item => item.kind === kind && item.id === id);
 }
+const scopedApps = () => data.appellations.filter(app => state.route === 'country' ? app.countryId === state.id : state.route === 'region' ? regionBelongs(data, app.regionIds, state.id) : true);
+const filterLabel = filter => `${state.lang === 'ja' ? filter.kind === 'grape' ? filter.mode === 'exclude' ? '不使用でも可' : '使用可能' : `${filter.mode === 'exclude' ? '除外する' : ''}${t(filter.kind)}` : `${t(filter.mode)} ${t(filter.kind)}`}: ${name(find(filter.kind, filter.id)) || filter.id}`;
+const shortWine = wine => [...new Set([...(wine.type || '').split(/\s*\/\s*/), ...(wine.qualifiers || [])])].map(term => name({name:{original:term}})).join('・') || name(wine);
 const coverageHTML = () => `<p class="coverage">${escape(t('coverage'))}: ${data.appellations.length} ${state.lang === 'ja' ? '呼称' : 'appellations'} / ${data.regions.length} ${state.lang === 'ja' ? '地域（限定収録）' : 'regions (limited coverage)'}</p>`;
 const invalidFilters = () => state.filters.filter(filter => !find(filter.kind, filter.id));
 const activeFilters = () => {
@@ -135,11 +141,11 @@ function wineNames(app) {
 }
 
 function searchUI() {
-  return `<section class="search-box" aria-label="${escape(t('search'))}"><label for="query" class="search-label">${escape(state.lang === 'ja' ? '産地・品種・ワインのタイプの候補を探す' : 'Find place, grape and wine-type suggestions')}</label><p id="query-help" class="meta-line">${escape(state.lang === 'ja' ? '入力は候補探しです。選択した条件だけが結果に適用されます。' : 'Typing finds suggestions. Only selected filters apply to results.')}</p><input type="search" id="query" value="${escape(state.query)}" placeholder="${escape(t('search'))}" autocomplete="off" aria-describedby="query-help" aria-controls="candidates" aria-expanded="${Boolean(state.query)}"><section aria-label="${state.lang === 'ja' ? '適用中の条件' : 'Applied filters'}"><h2 class="filters-heading">${state.lang === 'ja' ? '適用中の条件' : 'Applied filters'}</h2><div id="chips" class="chips"></div></section><p id="candidate-status" class="sr-only" role="status"></p><div id="candidates" class="candidates"></div></section>${coverageHTML()}<section id="results" tabindex="-1" aria-live="polite" aria-atomic="false"></section>`;
+  return `<section class="search-box" aria-label="${escape(t('search'))}"><label for="query" class="search-label">${escape(state.lang === 'ja' ? '産地・品種・ワインのタイプの候補を探す' : 'Find place, grape and wine-type suggestions')}</label><p id="query-help" class="meta-line">${escape(state.lang === 'ja' ? '候補を選ぶと条件に追加、または詳細へ移動します。' : 'Typing finds suggestions. Only selected filters apply to results.')}</p><input type="search" id="query" value="${escape(state.query)}" placeholder="${escape(t('search'))}" autocomplete="off" aria-describedby="query-help" aria-controls="candidates" aria-expanded="${Boolean(state.query)}"><section aria-label="${state.lang === 'ja' ? '適用中の条件' : 'Applied filters'}"><h2 class="filters-heading">${state.lang === 'ja' ? '適用中の条件' : 'Applied filters'}</h2><div id="chips" class="chips"></div></section><p id="candidate-status" class="sr-only" role="status"></p><div id="candidates" class="candidates"></div></section><section id="results" tabindex="-1" aria-live="polite" aria-atomic="false"></section>`;
 }
 
 function homeHTML() {
-  return `<p class="eyebrow">Appellation Explorer</p><h1>${escape(t('title'))}</h1><p class="intro">${escape(t('intro'))}</p>${searchUI()}<section><h2>${escape(t('countries'))}</h2><div class="country-grid">${sort(data.countries ?? []).map(entity => row(entity, 'country', t('country'))).join('')}</div></section><section><h2>${escape(t('mainRegions'))}</h2><div class="region-grid">${sort((data.regions ?? []).filter(region => !region.parentId && (data.appellations ?? []).some(app => regionBelongs(data, app.regionIds, region.id)))).map(entity => { const apps=sort(data.appellations.filter(a=>regionBelongs(data,a.regionIds,entity.id))); return `<section class="home-region">${row(entity,'region', `${name(find('country',entity.countryId))} · ${apps.length} ${state.lang==='ja'?'収録呼称':'included appellations'}`)}${apps.slice(0,4).map(a=>row(a,'appellation',a.gi)).join('')}${apps.length>4?button(state.lang==='ja'?'この地域の呼称をすべて見る':'View all appellations in this region','navigate',`data-kind="region" data-id="${escape(entity.id)}"`,'quiet'):''}</section>`; }).join('')}</div></section><p>${button(t('recent'), 'navigate', 'data-kind="recent"', 'quiet')}</p>${aboutLink()}`;
+  return `<p class="eyebrow">Appellation Explorer</p><h1>${escape(t('title'))}</h1><p class="intro">${escape(t('intro'))}</p>${searchUI()}<details id="browse-other"><summary>${state.lang==='ja'?'別の地域を探す':'Explore another region'}</summary><section><h2>${escape(t('countries'))}</h2><div class="country-grid">${sort(data.countries ?? []).map(entity => row(entity, 'country', t('country'))).join('')}</div></section><section><h2>${escape(t('mainRegions'))}</h2><div class="region-grid">${sort((data.regions ?? []).filter(region => !region.parentId && (data.appellations ?? []).some(app => regionBelongs(data, app.regionIds, region.id)))).map(entity => { const apps=sort(data.appellations.filter(a=>regionBelongs(data,a.regionIds,entity.id))); return `<section class="home-region">${row(entity,'region', `${name(find('country',entity.countryId))} · ${apps.length} ${state.lang==='ja'?'収録呼称':'included appellations'}`)}${apps.slice(0,4).map(a=>row(a,'appellation',a.gi)).join('')}${apps.length>4?button(state.lang==='ja'?'この地域の呼称をすべて見る':'View all appellations in this region','navigate',`data-kind="region" data-id="${escape(entity.id)}"`,'quiet'):''}</section>`; }).join('')}</div></section></details><p>${button(t('recent'), 'navigate', 'data-kind="recent"', 'quiet')}</p>${aboutLink()}`;
 }
 
 function regionHTML() {
@@ -154,16 +160,16 @@ function regionHTML() {
   const country = state.route === 'country' ? entity : find('country', entity.countryId);
   const children = (data.regions ?? []).filter(region => state.route === 'country' ? region.countryId === entity.id && !region.parentId : region.parentId === entity.id);
   const apps = (data.appellations ?? []).filter(app => state.route === 'country' ? app.countryId === entity.id : regionBelongs(data, app.regionIds, entity.id));
-  return `<p class="eyebrow">${escape(t(state.route))}</p><h1>${escape(name(entity))}</h1>${original(entity) !== name(entity) ? `<p class="original">${escape(original(entity))}</p>` : ''}<nav class="path" aria-label="${escape(t('regionContext'))}">${country ? button(name(country), 'navigate', `data-kind="country" data-id="${escape(country.id)}"`, 'quiet') : ''}${path.map(item => `<span aria-hidden="true">›</span>${button(name(item), 'navigate', `data-kind="region" data-id="${escape(item.id)}"`, 'quiet')}`).join('')}</nav><p class="muted">${escape(state.lang === 'ja' ? 'この地域・国の範囲内で、選択した条件をすべて満たす呼称を検索します。' : 'Search within this region or country, matching every selected condition.')}</p>${searchUI()}${state.route === 'region' ? button(t('regionSearch'), 'add-filter', `data-kind="region" data-id="${escape(entity.id)}"`, 'quiet') : ''}${children.length ? `<section><h2>${escape(t('regions'))}</h2><div class="region-grid">${sort(children).map(item => row(item, 'region', t('region'))).join('')}</div></section>` : ''}<section><h2>${escape(t('appellations'))}</h2>${sort(apps).map(app => row(app, 'appellation', [regionNames(app), app.gi, ...(app.traditionalTerms ?? []), app.level, wineNames(app)].filter(Boolean).join(' · '))).join('') || `<p class="empty">${escape(t('noData'))}</p>`}</section>${aboutLink()}`;
+  return `<p class="eyebrow">${escape(t(state.route))}</p><h1>${escape(name(entity))}</h1>${original(entity) !== name(entity) ? `<p class="original">${escape(original(entity))}</p>` : ''}<nav class="path" aria-label="${escape(t('regionContext'))}">${country ? button(name(country), 'navigate', `data-kind="country" data-id="${escape(country.id)}"`, 'quiet') : ''}${path.map(item => `<span aria-hidden="true">›</span>${button(name(item), 'navigate', `data-kind="region" data-id="${escape(item.id)}"`, 'quiet')}`).join('')}</nav><p class="muted">${escape(state.lang === 'ja' ? 'この地域・国の範囲内で、選択した条件をすべて満たす呼称を検索します。' : 'Search within this region or country, matching every selected condition.')}</p>${children.length ? `<section id="child-regions"><h2>${escape(t('regions'))}</h2>${sort(children).map(item=>row(item,'region',t('region'))).join('')}</section>` : ''}${searchUI()}${aboutLink()}`;
 }
 
 function renderChips() {
   if (!$('chips')) return;
   $('chips').innerHTML = state.filters.map((filter, index) => {
-    const label = `${t(filter.mode)}: ${name(find(filter.kind, filter.id)) || filter.id}`;
+    const label = filterLabel(filter);
     return `<span class="chip-pair">${button(label, 'chip-menu', `data-index="${index}" aria-haspopup="dialog"`, `chip ${filter.mode}`)}${button('×', 'remove-filter', `data-index="${index}" aria-label="${escape(label + (state.lang === 'ja' ? 'の条件を外す' : ': remove filter'))}"`, 'chip-remove')}</span>`;
   }).join('') + (state.filters.length ? button(state.lang === 'ja' ? '選択した条件をすべて解除' : 'Clear all selected filters', 'clear-applied', '', 'quiet') : `<p class="meta-line">${state.lang === 'ja' ? '選択した条件はありません。' : 'No selected filters.'}</p>`)
-    + (['region','country'].includes(state.route) ? `<p class="meta-line">${escape(state.lang === 'ja' ? `探索範囲：${name(find(state.route,state.id))}（条件を解除してもこの範囲内を表示）` : `Browsing within ${name(find(state.route,state.id))}; clearing filters keeps this scope.`)}</p>` : '');
+    + (['region','country'].includes(state.route) ? `<p class="meta-line">${escape(state.lang === 'ja' ? `検索範囲：${name(find(state.route,state.id))}（条件を解除してもこの範囲内を表示）` : `Browsing within ${name(find(state.route,state.id))}; clearing filters keeps this scope.`)}</p>` : '');
 }
 
 function candidateMeta(candidate) {
@@ -176,41 +182,63 @@ function candidateMeta(candidate) {
 function renderCandidates() {
   if (!$('candidates')) return;
   const all = candidatesHidden ? [] : findCandidates(data, state.query, state.lang);
-  const found = all.slice(0, candidateLimit);
+  const exact = all.filter(c=>c.rank<2);
+  const found = [...exact, ...all.filter(c=>c.rank>=2)].slice(0, Math.max(candidateLimit,exact.length));
   $('candidate-status').textContent = state.query && !candidatesHidden ? `${all.length} ${state.lang === 'ja' ? '候補' : 'suggestions'}` : '';
   const groups = new Map();
   for (const candidate of found) { if (!groups.has(candidate.kind)) groups.set(candidate.kind, []); groups.get(candidate.kind).push(candidate); }
   $('candidates').innerHTML = [...groups].map(([kind, values]) => `<section class="candidate-group"><h3>${escape(t(kind))}</h3>${values.map(candidate => {
     const attributes = `data-kind="${kind}" data-id="${escape(candidate.id)}"`;
-    const excludeLabel = state.filters.some(f => f.kind === kind && f.id === candidate.id && f.mode === 'include') ? t('changeExclude') : t('addExclude');
+    const excludeLabel = kind === 'grape' ? (state.lang === 'ja' ? '不使用でも可で追加' : 'Can omit') : state.filters.some(f => f.kind === kind && f.id === candidate.id && f.mode === 'include') ? t('changeExclude') : t('addExclude');
     const isDetail = ['appellation', 'designation'].includes(kind);
-    return `<div class="candidate"><button type="button" class="candidate-name" data-action="${isDetail || kind === 'region' ? 'candidate-navigate' : 'add-filter'}" ${attributes}><span>${escape(name(candidate))}</span>${original(candidate) !== name(candidate) ? `<small lang="it">${escape(original(candidate))}</small>` : ''}<small>${escape(candidateMeta(candidate))}</small><small>${escape(isDetail ? state.lang === 'ja' ? '詳細を見る' : 'View details' : kind === 'region' ? t('explore') : state.lang === 'ja' ? '含む条件に追加' : 'Add inclusion filter')} ›</small></button><div class="candidate-actions">${isDetail ? '' : `${kind === 'region' ? button(t('add'), 'add-filter', `${attributes} aria-label="${escape(name(candidate) + ': ' + t('add'))}"`) : ''}${button(excludeLabel, 'add-filter', `${attributes} data-mode="exclude" aria-label="${escape(name(candidate) + ': ' + excludeLabel)}"`)}`}</div></div>`;
+    return `<div class="candidate"><button type="button" class="candidate-name" data-action="${isDetail || kind === 'region' ? 'candidate-navigate' : 'add-filter'}" ${attributes}><span>${escape(name(candidate))}</span>${original(candidate) !== name(candidate) ? `<small lang="it">${escape(original(candidate))}</small>` : ''}<small>${escape(candidateMeta(candidate))}</small><small>${escape(isDetail ? state.lang === 'ja' ? '詳細を見る' : 'View details' : kind === 'region' ? t('explore') : state.lang === 'ja' ? kind === 'grape' ? '使用可能で追加' : '条件に追加' : 'Add inclusion filter')} ›</small></button><div class="candidate-actions">${isDetail ? '' : `${kind === 'region' && !(state.route === kind && state.id === candidate.id) ? button(t('add'), 'add-filter', `${attributes} aria-label="${escape(name(candidate) + ': ' + t('add'))}"`) : ''}${button(excludeLabel, 'add-filter', `${attributes} data-mode="exclude" aria-label="${escape(name(candidate) + ': ' + excludeLabel)}"`)}`}</div></div>`;
   }).join('')}</section>`).join('') || (state.query.trim() && !candidatesHidden ? `<p class="muted">${escape(t('noCandidates'))}</p>` : '');
-  if (all.length > candidateLimit) $('candidates').innerHTML += button(t('moreCandidates'), 'more-candidates');
+  if (all.length > found.length) $('candidates').innerHTML += button(t('moreCandidates'), 'more-candidates');
   $('query').setAttribute('aria-expanded', String(Boolean(all.length)));
 }
 
+function applicabilityHTML(wines, id) {
+  const scopes = new Map();
+  for (const wine of wines) {
+    const scope = wine.grapeRule?.scope || wine.scope;
+    if (!scope) continue;
+    if (!scopes.has(scope)) scopes.set(scope,new Set());
+    scopes.get(scope).add(shortWine(wine));
+  }
+  if (!scopes.size) return '';
+  return `<details id="applicability-${escape(id)}" class="applicability"><summary>${state.lang==='ja'?'適用条件を見る':'View applicability'}</summary>${[...scopes].map(([scope,types])=>`<p><strong>${escape([...types].join(' | '))}</strong></p><p>${escape(scopeText(scope))}</p>`).join('')}</details>`;
+}
+function updateTypeSeparators() {
+  requestAnimationFrame(()=>document.querySelectorAll('.type-separator').forEach(separator=>{
+    const before=separator.previousElementSibling?.getBoundingClientRect(), after=separator.nextElementSibling?.getBoundingClientRect();
+    separator.style.visibility=before && after && Math.abs(before.top-after.top)<2 ? 'visible' : 'hidden';
+  }));
+}
+window.addEventListener('resize',updateTypeSeparators);
+
 function renderResults() {
+  updateTypeSeparators();
   if (!$('results')) return;
+  const filtered = state.filters.length > 0;
+  if ($('browse-other')) { $('browse-other').open = !filtered; $('browse-other').classList.toggle('initial-exploration', !filtered); }
+  if ($('child-regions')) $('child-regions').hidden = filtered;
   if (state.invalidLink || invalidFilters().length) { $('results').innerHTML = `<p class="notice" role="alert">${escape(t('invalidLink'))}</p>${button(t('reset'), 'reset-filters')}`; return; }
   if (!activeFilters().length) { $('results').innerHTML = ''; return; }
-  const { results, unknownCount, unknownAppellations } = searchAppellations(data, activeFilters());
-  results.sort((a, b) => name(a.appellation).localeCompare(name(b.appellation), state.lang));
-  $('results').innerHTML = `<div class="results-count"><strong>${escape(state.lang === 'ja' ? `収録${data.appellations.length}呼称のうち ${results.length}件が一致` : `${results.length} matches among ${data.appellations.length} included appellations`)}</strong><small>${escape(t('share'))}</small></div>${state.filters.some(filter => filter.kind === 'grape') ? `<p class="muted"><small>${escape(state.lang === 'ja' ? 'この品種を使える呼称を探します。「除外」は使わずに造れるタイプを探します。代表品種や実際のボトルの配合を示す結果ではありません。' : 'Find appellations where use is permitted, not typical blends. Exclusion finds wines that may omit the grape.')}</small></p>` : ''}${unknownCount ? `<p class="notice">${escape(t('unknown'))} (${unknownCount})<br>${unknownAppellations.map(app => escape(name(app))).join(' · ')}</p>` : ''}${results.length ? results.map(result => {
-    const app = result.appellation;
-    const ownIds = result.matches.filter(match => !match.designation).map(match => match.wine.id);
-    const matches = result.matches.map(match => `<div class="result-match">${escape(name({name:{original:match.wine.type}}))}${match.wine.qualifiers?.length ? ` · ${escape(match.wine.qualifiers.map(q=>name({name:{original:q}})).join(' / '))}` : ''}${match.designation ? ` · ${button(name(match.designation), 'open-match', `data-kind="designation" data-id="${escape(match.designation.id)}" data-wines="${escape(match.wine.id)}"`, 'quiet')}` : ''}<span class="sr-only">${escape(name(match.wine))}</span></div>`);
-    const labelScoped = result.matches.filter(match => match.wine.grapeRule?.scope === 'senza indicazione del nome dei vitigni');
-    const labelScopeNote = labelScoped.length ? `<p class="meta-line result-label-scope">${escape(state.lang === 'ja' ? 'ボトルのラベルに品種名を記載しない場合の規定で一致。' : 'Matches rules for bottles without grape names on the label.')}${labelScoped.length < result.matches.length ? ` ${escape(labelScoped.map(match => name(match.wine)).join(' / '))}` : ''}</p>` : '';
-    return `${rowWithMatch(app, ownIds)}${labelScopeNote}<p class="meta-line">${state.lang === 'ja' ? '一致するタイプ' : 'Matching wine types'} (${matches.length})</p>${matches.slice(0,3).join('')}${matches.length>3 ? `<details id="matches-${escape(app.id)}"><summary>${state.lang === 'ja' ? `ほか${matches.length-3}タイプを見る` : `Show ${matches.length-3} more types`}</summary>${matches.slice(3).join('')}</details>` : ''}`;
-  }).join('') : `<p class="empty">${escape(t('noResults'))}</p>`}`;
+  const scope = scopedApps();
+  const { results, unknownCount, unknownAppellations } = searchAppellations({...data, appellations:scope}, activeFilters());
+  results.sort((a,b)=>name(a.appellation).localeCompare(name(b.appellation),state.lang));
+  const ja = state.lang === 'ja';
+  const reason = state.filters.map(f => f.kind === 'grape' ? `${name(find('grape',f.id))}${ja ? f.mode==='exclude'?'を使わずに造れる':'を使用可能' : f.mode==='exclude'?' can be omitted':' is permitted'}` : filterLabel(f)).join(ja?' ／ ':' / ');
+  const scopeName = ['region','country'].includes(state.route) ? name(find(state.route,state.id)) : ja?'全地域':'All regions';
+  $('results').innerHTML = `<div class="results-count"><strong>${escape(ja ? filtered ? `条件に合う呼称：${results.length}件` : `${scopeName}の収録呼称：${results.length}件` : `${results.length} ${filtered?'matching':'included'} appellations`)}</strong><small>${escape(ja?`${scopeName}の収録${scope.length}呼称から検索（限定収録）`:`Search among ${scope.length} included appellations in ${scopeName}`)}</small></div>${filtered ? button(ja?'検索条件のリンクをコピー':'Copy search conditions link','copy-search','','quiet')+'<div id="copy-feedback" role="status"></div>' : ''}${state.filters.some(f=>f.kind==='grape') ? `<p class="meta-line">${escape(ja?'使用可能は使用必須やボトルへの含有を意味しません。不使用でも可は、その品種を使わずに造れるという意味です。':'Permitted does not mean required or present in a bottle. Can omit means a compliant wine can be made without the grape.')}</p>`:''}${unknownCount?`<p class="notice">${escape(t('unknown'))} (${unknownCount})<br>${unknownAppellations.map(a=>escape(name(a))).join(' · ')}</p>`:''}${results.map(result=>{
+    const app=result.appellation;
+    const matches=result.matches;
+    const type = match => `<span class="result-match">${button(shortWine(match.wine)+(match.designation?` · ${name(match.designation)} (${[t('designation'),match.designation.qualification].filter(Boolean).join('・')})`:''),'open-match',`data-kind="${match.designation?'designation':'appellation'}" data-id="${escape(match.designation?.id || app.id)}" data-wine="${escape(match.wine.id)}"`,'type-link')}</span>`;
+    return `<article class="result-card" id="result-${escape(app.id)}"><h2>${button(name(app),'open-match',`data-kind="appellation" data-id="${escape(app.id)}"`,'result-title')}</h2>${original(app)!==name(app)?`<p class="original">${escape(original(app))}</p>`:''}<p class="meta-line">${escape([regionNames(app),app.gi,...(app.traditionalTerms||[]),app.level].filter(Boolean).join(' · '))}</p>${filtered?`<p class="search-reason">${escape(reason)}</p>`:''}<p class="meta-line">${ja?filtered?'条件に合うタイプ':'ワインのタイプ':filtered?'Matching types':'Wine types'}：${matches.length}</p><div class="result-types">${matches.slice(0,3).map(type).join('<span class="type-separator" aria-hidden="true"> | </span>')}</div>${matches.length>3?`<details id="matches-${escape(app.id)}" class="more-types"><summary><span class="when-closed">${ja?`残り${matches.length-3}タイプを表示`:`Show ${matches.length-3} more types`}</span><span class="when-open">${ja?'追加したタイプを閉じる':'Close additional types'}</span></summary><div class="result-types">${matches.slice(3).map(type).join('<span class="type-separator" aria-hidden="true"> | </span>')}</div></details>`:''}${applicabilityHTML(matches.map(m=>m.wine),app.id)}${button(ja?'詳細を見る':'View details','open-match',`data-kind="appellation" data-id="${escape(app.id)}"`,'quiet')}</article>`;
+  }).join('') || `<p class="empty">${escape(ja?`現在収録している${scope.length}呼称では、条件に合うタイプが見つかりませんでした。この地域全体で使用できないという意味ではありません。`:t('noResults'))}</p>${state.filters.length===1?button(ja?`${name(find(state.filters[0].kind,state.filters[0].id))}の条件を外す`:'Remove this condition','remove-filter','data-index="0"','quiet'):''}`}${['region','country'].includes(state.route)?`<p>${button(ja?'他の地域も探す':'Search other regions','widen-scope','','quiet')}<small>${ja?'追加した条件を維持して、検索範囲を全地域に広げます。':'Keep added conditions and search all regions.'}</small></p>`:''}`;
 }
 
-function rowWithMatch(app, ids) {
-  return `<button type="button" class="row" data-action="open-match" data-kind="appellation" data-id="${escape(app.id)}" data-wines="${escape(ids.join(','))}"><span class="row-title">${escape(name(app))}</span><span class="row-meta">${escape([regionNames(app), app.gi, ...(app.traditionalTerms ?? [])].filter(Boolean).join(' · '))}</span></button>`;
-}
-
-function scopeText(scope) { return scope === 'senza indicazione del nome dei vitigni' && state.lang === 'ja' ? 'ボトルのラベルに品種名を記載しない場合の規定' : scope; }
+function scopeText(scope) { return scope === 'senza indicazione del nome dei vitigni' && state.lang === 'ja' ? 'この判定は、ボトルのラベルに品種名を記載しない場合の規定に基づきます。品種名を記載する場合の追加条件は、この判定に含みません。' : scope; }
 
 function aboutLink(label = t('about')) { return `<p class="footer-link">${button(label, 'navigate', 'data-kind="about"', 'quiet')}</p>`; }
 
@@ -235,7 +263,13 @@ function evidenceHTML(evidence, id) {
 }
 
 function sourceAnchor(source) {
-  try { const url = new URL(source.url); if (['https:', 'http:'].includes(url.protocol)) return `<a href="${escape(url.href)}" rel="external">${escape(source.archiveMember ? `${t('archiveDownload')} — ${source.archiveMember}` : `${t('sourceDocument')} — ${source.title || t('sourceLink')}`)}</a>`; } catch { /* Invalid source links are not clickable. */ }
+  const archive = source.kind === 'official-specification-archive' ? source : (data.sources ?? []).find(item => item.kind === 'official-specification-archive' && item.url === source.url && item.sha256 === source.archiveHash);
+  const isArchive = Boolean(source.archiveMember || archive);
+  // Reuse the saved catalogue label only when URL and archived bytes identity
+  // match. A similarly named or subsequently replaced archive is not evidence.
+  const savedSize = archive?.title?.match(/\((\d+(?:[.,]\d+)?\s*(?:KB|MB|GB))\)/i)?.[1];
+  const size = source.archiveBytes ? `${Math.ceil(source.archiveBytes/1024/1024)} MB` : savedSize || (state.lang === 'ja' ? '容量不明' : 'size unknown');
+  try { const url = new URL(source.url); if (['https:', 'http:'].includes(url.protocol)) return `<a href="${escape(url.href)}" rel="external">${escape(isArchive ? `${t('archiveDownload')}（${size}） — ${source.archiveMember || source.title}` : `${t('sourceDocument')} — ${source.title || t('sourceLink')}`)}</a>`; } catch { /* Invalid source links are not clickable. */ }
   return '';
 }
 
@@ -251,9 +285,17 @@ function ratioHTML(constraint) {
   return [minimum, maximum].filter(Boolean).join(' / ');
 }
 
+// Shared rules can appear on many types. Cache only pure, evidence-bound duties.
+const requiredGrapeCache = new Map();
+function requiredGrapes(rule) {
+  const key=JSON.stringify(rule);
+  if (!requiredGrapeCache.has(key)) requiredGrapeCache.set(key,(rule?.grapeIds || []).filter(id=>evaluateGrapeUse(rule,[id]).status==='match' && evaluateGrapeUse(rule,[],[id]).status==='no_match'));
+  return requiredGrapeCache.get(key);
+}
+
 function grapeHTML(rule, prefix) {
   if (!rule) return `<p class="muted">${escape(t('unverified'))}</p>`;
-  const ids = [...new Set(rule.grapeIds || [])];
+  const ids = [...new Set(rule.grapeIds || [])].sort((a,b)=>name(find('grape',a)).localeCompare(name(find('grape',b)),state.lang));
   const ja = state.lang === 'ja';
   const wording = (rule.evidence?.[0]?.quote || rule.original || '').replace(/\s+/g, ' ');
   const region = wording.match(/idonei alla coltivazione nella regione ([\p{L}]+)[.;]/u)?.[1];
@@ -261,14 +303,14 @@ function grapeHTML(rule, prefix) {
   const oneOrMore = regional && /da uno o più vitigni/i.test(wording);
   const regionName = region ? name({ name: { original: region } }) : '';
   const scoped = rule.scope === 'senza indicazione del nome dei vitigni';
-  const scope = scoped ? `<p>${escape(ja ? 'ボトルのラベルに品種名を記載しない場合の規定です。ラベルに品種名を記載する場合には、別の原料・栽培条件があります。' : 'These rules cover wines without a grape name on the label. Varietal labelling has separate conditions.')}</p>` : '';
+  const scope = scoped ? `<details id="grape-scope-${escape(prefix)}"><summary>${ja?'適用条件を見る':'View applicability'}</summary><p>${escape(ja ? 'ボトルのラベルに品種名を記載しない場合の規定です。ラベルに品種名を記載する場合には、別の原料・栽培条件があります。' : 'These rules cover wines without a grape name on the label. Varietal labelling has separate conditions.')}</p></details>` : '';
   const summary = regional ? ja
     ? `${regionName}州で栽培が認められた品種${oneOrMore ? 'から1品種または複数品種を使用できます' : 'で構成される畑から収穫したブドウを使用します'}。規定の付表に載る認可品種を調べる一覧で、特定の代表品種や実際のボトルの配合を示すものではありません。`
     : `Permitted varieties from ${regionName} supply these wines. This is an authorised list, not a list of representative grapes or a bottle recipe.`
     : t('permitted');
-  const list = ids.length <= 6 ? `<p>${ids.map(grapeLink).join(' · ')}</p>` : `<details id="grapes-${escape(prefix)}" class="grape-list"><summary>${escape(ja ? '使える品種を調べる' : t('permitted'))} (${ids.length})</summary><p class="meta-line">${escape(ja ? '日本語は参考の読みです。公式原語名を併記し、品種の同一性は原語と出典で区別します。' : 'Japanese readings are editorial aids; original identities are retained.')}</p><label>${escape(t('grapeSearch'))}<input type="search" data-grape-search autocomplete="off"></label><div class="grape-buttons">${ids.map(grapeLink).join('')}</div></details>`;
+  const list = ids.length <= 6 ? `<p>${ids.map(grapeLink).join(' · ')}</p>` : `<div class="grape-list"><p>${escape(ja?`規定に列挙された${ids.length}品種から調べる`:`Explore ${ids.length} listed grapes`)}</p><label>${escape(t('grapeSearch'))}<input id="grape-query-${escape(prefix)}" type="search" data-grape-search autocomplete="off"></label><div class="grape-search-results" aria-live="polite"></div><details id="grapes-${escape(prefix)}"><summary>${escape(ja?`全${ids.length}品種の一覧を開く`:`Open all ${ids.length} grapes`)}</summary><p class="meta-line">${escape(ja?'日本語は参考の読みです。原語のみの品種は読み未確認です。':'Japanese readings are editorial aids; untranslated names have no verified reading.')}</p><div class="grape-buttons">${ids.map(grapeLink).join('')}</div></details></div>`;
   // Show only proved usage duties, never a positive planting minimum alone.
-  const required = ids.filter(id => evaluateGrapeUse(rule, [id]).status === 'match' && evaluateGrapeUse(rule, [], [id]).status === 'no_match');
+  const required = requiredGrapes(rule);
   const duties = required.map(id => {
     const proof = grapeDutyProof(rule, id);
     const explanations = ja ? {
@@ -290,7 +332,7 @@ function grapeHTML(rule, prefix) {
   const vineyard = (rule.constraints || []).some(c => ratioBasis(rule, c) === 'vineyard');
   const explanation = vineyard ? ja ? `この呼称に使うブドウの供給元となる、${estate ? '生産者単位の' : ''}対象畑の条件です。ボトルの配合率ではなく、植えられた品種の割合をワインの配合率へ換算していません。` : 'These are conditions on the source vineyards, not a separate kind of grape or the proportions in a bottle.' : t('sourceUseNotice');
   deferReference('composition', prefix, `<p>${escape(scopeText(rule.scope || ''))}</p><p>${escape(summary)}</p><p>${escape(explanation)}</p>${constraints}${rule.original ? `<details id="raw-${escape(prefix)}"><summary>${escape(t('raw'))}</summary><p lang="it">${escape(rule.original)}</p></details>` : ''}${evidenceHTML(rule.evidence, `${prefix}-grapes`)}`);
-  return `${scope}<p>${escape(summary)}</p>${duties}<p class="meta-line">${ja ? '品種名を押すと、この品種を使える呼称を探せます。' : 'Select a grape to find appellations permitting it.'}</p>${list}${uncertain}<details id="ratios-${escape(prefix)}"><summary>${escape(ja ? 'ブドウの供給元となる畑・比率の条件' : t('cultivation'))}</summary><p>${escape(explanation)}</p>${constraints}</details>`;
+  return `<p>${escape(summary)}</p>${grapeConclusion(rule)}${duties}${scope}<p class="meta-line">${ja ? '品種名を押すと、この品種を使える呼称を探せます。' : 'Select a grape to find appellations permitting it.'}</p>${list}${uncertain}<details id="ratios-${escape(prefix)}"><summary>${escape(ja ? vineyard ? '原料ぶどうを育てる畑の条件' : '原料・ワインの比率の条件' : t('cultivation'))}</summary><p>${escape(explanation)}</p>${constraints}</details>`;
 }
 
 function valueText(value) {
@@ -314,10 +356,13 @@ function optionalHTML(field, fieldKey, prefix) {
   if (explanation) {
     const translation = `<p>${escape(explanation.ja)}</p><p class="meta-line">${explanation.coverage === 'summary' ? '日本語の要約です。細部・例外を含む条文全体の訳ではありません。' : '公式記述の参考訳'}</p>`;
     deferReference(fieldKey, prefix, `${translation}${current.original && !current.evidence?.some(e => e.quote === current.original) ? `<details><summary>${escape(t('raw'))}</summary><p lang="it">${escape(current.original)}</p></details>` : ''}${evidenceHTML(current.evidence, `${prefix}-${fieldKey}`)}`);
-    return `<div class="rule translated-rule"><span class="rule-label">${escape(t(fieldKey))}</span>${translation}</div>`;
+    return `<div class="rule translated-rule"><span class="rule-label">${escape(t(fieldKey))}</span><p>${escape(explanation.ja)}</p></div>`;
   }
 
-  let body = current.state !== 'confirmed' ? `<p class="muted">${escape(t(current.state ?? 'unverified'))}</p>` : '';
+  const missing = ['not_found','unverified'].includes(current.state);
+  const missingLabel = current.state==='not_found' ? state.lang==='ja'?'記載未確認':'No statement found' : state.lang==='ja'?'未確認':'Unverified';
+  const missingExplanation = current.state==='not_found' ? state.lang==='ja'?'確認資料では記載を見つけられていません。規定なしとは限りません。':'No statement was found in the checked material. This does not establish that no requirement exists.' : t('unverified');
+  let body = missing ? `<p class="muted">${escape(missingLabel)}</p><details id="state-${escape(prefix)}-${fieldKey}" class="field-status"><summary>${escape(t(fieldKey))}：${state.lang==='ja'?'確認状況の説明':'About this status'}</summary><p>${escape(missingExplanation)}</p></details>` : current.state !== 'confirmed' ? `<p class="muted">${escape(t(current.state ?? 'unverified'))}</p>` : '';
   if (current.values?.length) body += current.values.map(value => {
     let text = valueText(value);
     if (fieldKey === 'alcohol' && value.value != null) {
@@ -329,12 +374,16 @@ function optionalHTML(field, fieldKey, prefix) {
         text += state.lang === 'ja' ? known ? `適用対象は${name({name:{original:[known[1], known[2]?.trim()].filter(Boolean).join(' ')}})}です。` : '追加の適用条件の日本語説明は未対応です。公式原文の条件を確認してください。' : ` · ${conditions}`;
       }
     }
-    if (fieldKey === 'ageing') text = [value.minimum ? t('minimum') : '', value.container === 'total' ? t('totalAgeing') : t(value.container), value.months != null ? `${value.months} ${state.lang === 'ja' ? 'か月' : 'months'}` : '', value.relation ? t(value.relation) : '', value.start && state.lang === 'ja' ? ageingStartExplanation(value.start) || `起算日は公式原文でご確認ください（${value.start}）` : value.start, conditionText(value.conditions)].filter(Boolean).join(' · ');
+    if (fieldKey === 'ageing') {
+      const start = value.start && state.lang==='ja' ? ageingStartExplanation(value.start) || `起算日の日本語説明は未確認（${value.start}）` : value.start;
+      text = state.lang==='ja' ? `${start || ''}${value.conditions ? conditionText(value.conditions) : ''}${value.container==='wood'?'木樽で':value.container==='bottle'?'瓶内で':value.container==='total'?'合計で':`${t(value.container)}：`}${value.months != null ? `${value.months}か月${value.minimum?'以上':''}` : '期間未確認'}熟成${value.relation ? `（${t(value.relation)}）` : ''}。` : [value.minimum?'Minimum':'',t(value.container),value.months!=null?`${value.months} months`:'',value.relation?t(value.relation):'',start,conditionText(value.conditions)].filter(Boolean).join(' · ');
+    }
     for (const item of value.evidence ?? []) evidence.set(JSON.stringify(item), item);
     return text ? `<p>${escape(text)}</p>` : '';
   }).join('');
   if (fieldKey === 'alcohol' && current.values?.length && state.lang === 'ja') {
     if (new Set(current.values.map(v=>v.metric)).size>1) body += '<p class="meta-line">総・実の両方の条件を満たします。</p>';
+    if (current.values.some(v=>v.metric==='total')) body += '<p class="meta-line">総アルコール度数は残る糖の潜在分を含み、ボトルの実際の度数とは異なります。</p>';
     body += '<a class="meta-line" href="#alcohol-guide" data-action="section-jump" data-target="alcohol-guide">度数の読み方</a>';
     const translated = current.values.map((value, index) => {
       const proof = alcoholDisplayProof(current, value);
@@ -351,19 +400,33 @@ function optionalHTML(field, fieldKey, prefix) {
   if (fieldKey === 'varietalLabelling' && current.state === 'confirmed') body += `<p>${escape(state.lang === 'ja' ? 'ボトルのラベルに品種名を記載する場合には、その品種に対応した別の原料・栽培条件があります。ラベルに品種名を記載しない場合の規定とは区別してください。' : 'Naming grape varieties on the label has separate fruit and cultivation conditions tied to those varieties. These differ from the rules for wines without a varietal name.')}</p>`;
   if (current.state === 'confirmed' && !current.values?.length) body += `<p class="muted">${escape(state.lang === 'ja' ? 'この項目は公式原文でご確認ください。日本語の説明はまだありません。' : 'The source is retained, but a translated explanation is not available.')}</p>`;
   const references = `${current.original && ![...evidence.values()].some(item => item.quote === current.original) ? `<details id="original-${escape(prefix)}-${fieldKey}"><summary>${escape(t('raw'))}</summary><p lang="it">${escape(current.original)}</p></details>` : ''}${evidenceHTML([...evidence.values()], `${prefix}-${fieldKey}`)}`;
-  deferReference(fieldKey, prefix, `${body}${references}`);
+  deferReference(fieldKey, prefix, `${body.replaceAll('id="state-', 'id="source-state-')}${references}`);
   return `<div class="rule"><span class="rule-label">${escape(t(fieldKey))}</span>${body}</div>`;
 }
 
-function wineHTML(wine, matched, common = false, sharedFields = [], sharedGrapes = '') {
-  return withReferenceContext(`${t('type')}: ${name(wine)}`, () => `<article class="wine ${matched ? 'matched' : ''}" id="wine-${escape(wine.id)}" tabindex="-1" data-wine-id="${escape(wine.id)}">${matched ? `<span class="matched-label">${escape(t('matched'))}</span>` : ''}<h2>${escape(name(wine))}</h2>${name(wine) !== original(wine) ? `<p lang="it" class="meta-line">${escape(original(wine))}</p>` : ''}<p>${escape(name({name:{original:wine.type}}))}</p>${wine.scope && !(wine.scope === 'senza indicazione del nome dei vitigni' && wine.grapeRule?.scope === wine.scope) ? `<p class="meta-line">${escape(scopeText(wine.scope))}</p>` : ''}${optionalHTML(wine.sensory, 'sensory', wine.id)}${sharedGrapes || (common ? `<p><a href="#common-grapes" data-action="common-jump">${escape(t('commonReference'))}</a></p>` : `<div class="rule"><span class="rule-label">${escape(t('composition'))}</span>${grapeHTML(wine.grapeRule, wine.id)}</div>`)}${optionalHTML(wine.ageing, 'ageing', wine.id)}${optionalHTML(wine.alcohol, 'alcohol', wine.id)}<details id="long-${escape(wine.id)}"><summary>${escape(t('allRules'))}</summary>${['varietalLabelling','production','area'].filter(k=>!sharedFields.includes(k) && (k!=='varietalLabelling'||wine[k])).map(k=>optionalHTML(wine[k],k,wine.id)).join('')}${sharedFields.length ? '<p><a href="#shared-regulations" data-action="section-jump" data-target="shared-regulations">'+(state.lang==='ja'?'呼称全体の区域・栽培・ラベル条件':'Appellation-wide area, cultivation and label conditions')+'</a></p>' : ''}${deferReference('type', wine.id, evidenceHTML(wine.evidence, `${wine.id}-identity`))}</details><a class="meta-line" href="#type-index" data-action="section-jump" data-target="type-index">${state.lang==='ja'?'タイプ一覧へ戻る':'Back to wine types'}</a></article>`);
+function grapeConclusion(rule) {
+  const selected = state.filters.filter(f=>f.kind==='grape');
+  if (!selected.length) return '';
+  const result = evaluateGrapeUse(rule, selected.filter(f=>f.mode==='include').map(f=>f.id), selected.filter(f=>f.mode==='exclude').map(f=>f.id));
+  return `<p class="grape-conclusion">${escape(selected.map(filterLabel).join(' ／ '))}：${escape(state.lang==='ja' ? result.status==='match'?'この品種規定では同時に成立します。':result.status==='unknown'?'規定情報が不足して判定できません。':'この品種規定では同時に成立しません。' : result.status==='match'?'Possible together under these grape rules.':result.status==='unknown'?'Insufficient information.':'Not possible together under these grape rules.')}</p>`;
+}
+function shortGrapeSummary(rule) {
+  const ids = rule?.grapeIds || [];
+  const required = requiredGrapes(rule);
+  return `<p>${escape(state.lang==='ja' ? required.length ? `${required.map(id=>name(find('grape',id))).join('・')}は使用が必要です。` : `使える品種は${ids.length}品種。使用可能と使用必須は別です。` : required.length ? `${required.map(id=>name(find('grape',id))).join(', ')} must be used.` : `${ids.length} permitted grapes; permitted does not mean required.`)}</p>`;
+}
+
+function wineHTML(wine, matched, common = false, sharedFields = []) {
+  return withReferenceContext(`${t('type')}: ${name(wine)}`, () => `<article class="wine ${matched ? 'matched' : ''}" id="wine-${escape(wine.id)}" tabindex="-1" data-wine-id="${escape(wine.id)}">${matched ? `<span class="matched-label">${escape(t('matched'))}</span>` : ''}<h2>${escape(shortWine(wine))}</h2><p class="meta-line">${escape(original(wine))}</p>${common ? `${grapeConclusion(wine.grapeRule)}${shortGrapeSummary(wine.grapeRule)}<p>${state.lang==='ja'?'使用可能な品種と条件は全タイプ共通です。':'Permitted grapes and conditions are shared by all types.'} <a href="#common-grapes" data-action="common-jump">${escape(t('commonReference'))}</a></p>` : `<div class="rule"><h3>${escape(t('composition'))}</h3>${grapeHTML(wine.grapeRule,wine.id)}</div>`}${applicabilityHTML([wine],wine.id)}${optionalHTML(wine.sensory,'sensory',wine.id)}${optionalHTML(wine.ageing,'ageing',wine.id)}${optionalHTML(wine.alcohol,'alcohol',wine.id)}<details id="long-${escape(wine.id)}"><summary>${escape(t('allRules'))}</summary>${['varietalLabelling','production','area'].filter(k=>!sharedFields.includes(k)&&(k!=='varietalLabelling'||wine[k])).map(k=>optionalHTML(wine[k],k,wine.id)).join('')}${sharedFields.length?'<a href="#shared-regulations" data-action="section-jump" data-target="shared-regulations">'+(state.lang==='ja'?'共通の区域・栽培・ラベル条件':'Shared conditions')+'</a>':''}${deferReference('type',wine.id,evidenceHTML(wine.evidence,`${wine.id}-identity`))}</details><a class="meta-line" href="#type-index" data-action="section-jump" data-target="type-index">${state.lang==='ja'?'タイプ目次へ':'Back to wine types'}</a></article>`);
 }
 
 function alcoholGuideHTML() {
   const definition = state.lang === 'ja' ? '実アルコール度数は20℃での製品100体積に含まれる純アルコールの体積、潜在アルコール度数は同じ条件で残る糖の完全発酵から生じ得る純アルコールの体積です。' : 'Actual alcohol is the volume of pure alcohol per 100 volumes of product at 20°C. Potential alcohol is the corresponding volume from complete fermentation of remaining sugar.';
   deferReference('alcohol', 'definitions', `<p>${escape(definition)}</p><a href="https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=celex%3A32013R1308" rel="external">EU規則1308/2013 附属書II 第IV部</a>`);
-  return `<details id="alcohol-guide" tabindex="-1"><summary>${state.lang==='ja'?'度数の読み方':'Reading alcohol requirements'}</summary><p>${state.lang==='ja'?'実アルコール度数は実際に含まれるアルコール分です。総アルコール度数は、それに残る糖がすべて発酵した場合に生じ得る分を加えた値で、ボトルの実際の度数とは異なります。総と実の両方が示される場合は、両方の条件を満たします。':'Actual alcohol is the alcohol present. Total alcohol adds the potential alcohol from complete fermentation of remaining sugar; it is not the actual alcohol in a bottle. Both requirements apply where both are stated.'}</p></details>`;
+  return `<details id="alcohol-guide" tabindex="-1"><summary>${state.lang==='ja'?'度数の読み方':'Reading alcohol requirements'}</summary><p>${state.lang==='ja'?'実アルコール度数は実際に含まれるアルコール分です。総アルコール度数は、それに残る糖がすべて発酵した場合に生じ得る分を加えた値で、ボトルの実際の度数とは異なります。総と実の両方が示される場合は、両方の条件を満たします。':'Actual alcohol is the alcohol present. Total alcohol adds the potential alcohol from complete fermentation of remaining sugar; it is not the actual alcohol in a bottle. Both requirements apply where both are stated.'}</p><p id="guide-return"></p></details>`;
 }
+
+function sourceDate(value) { if (!value) return state.lang==='ja'?'この記録では未確認':'Not recorded'; const date=new Date(value); return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(state.lang,{dateStyle:'medium',timeZone:'UTC',...(String(value).includes('T')?{timeStyle:'short'}:{})}).format(date)+(String(value).includes('T')?' UTC':''); }
 
 function sourcesHTML(entity) {
   const sourceIds = new Set();
@@ -375,14 +438,16 @@ function sourcesHTML(entity) {
   };
   collect(entity);
   const sources = (data.sources ?? []).filter(item => sourceIds.has(item.id));
+  const primary = source => source.kind === 'consolidated' || source.kind === 'register' && /\/id\//.test(source.url || '');
   deferReference(state.route, entity.id, evidenceHTML(entity.evidence, `${entity.id}-sources`));
   const groups = new Map();
   for (const item of detailReferences) {
     if (!groups.has(item.context)) groups.set(item.context, []);
     groups.get(item.context).push(item);
   }
-  const references = [...groups].sort(([a], [b]) => Number(b === name(entity)) - Number(a === name(entity))).map(([context, items]) => `<section class="reference-group"><h3>${escape(context)}</h3>${items.map(item => `<section class="reference-field" data-field="${escape(item.field)}" data-prefix="${escape(item.prefix)}"><h4>${escape(t(item.field))}</h4>${item.content}</section>`).join('')}</section>`).join('');
-  return `<details id="sources" class="sources-disclosure"><summary>${state.lang === 'ja' ? '出典・公式原文' : 'Sources and official originals'}</summary><p>${escape(state.lang === 'ja' ? '取得日は資料を保存した日、検証日は記録を確認した日です。施行日や、今日現在も改正がないことの保証ではありません。' : 'Retrieval and verification dates are not effective dates or a guarantee of no subsequent amendments.')}</p>${sources.map(source => `<article class="source" id="source-${escape(source.id)}" tabindex="-1"><strong>${escape(source.title)}</strong><dl><dt>${escape(t('agency'))}</dt><dd>${escape(source.agency)}</dd>${source.archiveMember ? `<dt>${escape(t('archiveDocument'))}</dt><dd>${escape(source.archiveMember)}</dd>` : ''}<dt>${escape(t('published'))}</dt><dd>${escape(source.publishedAt || (state.lang === 'ja' ? 'この記録では未確認' : 'Not recorded'))}</dd><dt>${state.lang === 'ja' ? '施行日' : 'Effective from'}</dt><dd>${escape(source.effectiveFrom || (state.lang === 'ja' ? 'この記録では未確認' : 'Not recorded'))}</dd><dt>${escape(t('retrieved'))}</dt><dd>${escape(source.retrievedAt ?? '')}</dd>${source.verifiedAt ? `<dt>${escape(t('verified'))}</dt><dd>${escape(source.verifiedAt)}</dd>` : ''}</dl>${sourceAnchor(source)}${sourceIdentityHTML(source)}</article>`).join('') || `<p class="muted">${escape(t('sourcesEmpty'))}</p>`}${references}</details>`;
+  const references = [...groups].sort(([a], [b]) => Number(b === name(entity)) - Number(a === name(entity))).map(([context, items]) => `<section class="reference-group"><h3>${escape(context)}</h3>${items.map(item => `<section class="reference-field" data-field="${escape(item.field)}" data-prefix="${escape(item.prefix)}"><h4>${escape(t(item.field))}</h4>${item.content.replaceAll(escape(t('evidence')),escape(`${t(item.field)}：${state.lang==='ja'?'根拠と原文':'evidence and original'}`))}</section>`).join('')}</section>`).join('');
+  const sourceCard = source => `<article class="source" id="source-${escape(source.id)}" tabindex="-1"><p class="eyebrow">${escape(source.kind==='consolidated' ? state.lang==='ja'?'この呼称の規定本文':'Product specification' : source.kind==='register' ? state.lang==='ja'?'EU登録情報':'EU registration' : state.lang==='ja'?'取得・確認に用いた資料':'Retrieval and verification record')}</p><strong>${escape(source.title)}</strong><dl><dt>${escape(t('agency'))}</dt><dd>${escape(source.agency)}</dd>${source.archiveMember ? `<dt>${escape(t('archiveDocument'))}</dt><dd>${escape(source.archiveMember)}</dd>` : ''}<dt>${escape(t('published'))}</dt><dd>${escape(sourceDate(source.publishedAt))}</dd><dt>${state.lang === 'ja' ? '施行日' : 'Effective from'}</dt><dd>${escape(sourceDate(source.effectiveFrom))}</dd><dt>${escape(t('retrieved'))}</dt><dd>${escape(sourceDate(source.retrievedAt))}</dd>${source.verifiedAt ? `<dt>${escape(t('verified'))}</dt><dd>${escape(sourceDate(source.verifiedAt))}</dd>` : ''}</dl>${sourceAnchor(source)}${sourceIdentityHTML(source)}</article>`;
+  return `<details id="sources" class="sources-disclosure"><summary>${state.lang === 'ja' ? '出典・公式原文' : 'Sources and official originals'}</summary><p>${escape(state.lang === 'ja' ? '取得日は資料を保存した日、検証日は記録を確認した日です。施行日や、今日現在も改正がないことの保証ではありません。' : 'Retrieval and verification dates are not effective dates or a guarantee of no subsequent amendments.')}</p>${sources.filter(primary).map(sourceCard).join('')}${sources.some(source=>!primary(source))?`<details id="source-records"><summary>${state.lang==='ja'?'取得・検証の詳しい記録':'Detailed retrieval and verification records'}</summary>${sources.filter(source=>!primary(source)).map(sourceCard).join('')}</details>`:''}${!sources.length?`<p class="muted">${escape(t('sourcesEmpty'))}</p>`:''}${references}</details>`;
 }
 
 function sourceIdentityHTML(source) {
@@ -413,14 +478,23 @@ function detailsHTML() {
   const common = wines.length > 1 && wines.every(wine => JSON.stringify(wine.grapeRule) === JSON.stringify(wines[0].grapeRule));
   const sharedFields = ['production','area','varietalLabelling'].filter(k=>wines.length>1 && wines[0][k] && wines.every(w=>JSON.stringify(w[k])===JSON.stringify(wines[0][k])));
   const commonContext = `${name(entity)} · ${state.lang === 'ja' ? '各タイプに共通する条文（タイプ限定条件を含む）' : 'Shared paragraphs, including type-specific conditions'}`;
-  const sharedGrapes = common ? withReferenceContext(commonContext, () => `<section id="common-grapes" tabindex="-1"><h3>${escape(t('commonRules'))}</h3>${grapeHTML(wines[0].grapeRule, entity.id)}</section>`) : '';
-  const typeIndex = `<nav id="type-index" tabindex="-1" aria-label="${state.lang==='ja'?'ワインのタイプ':'Wine types'}"><h2>${state.lang==='ja'?'どんな種類がある？':'Explore the wine types'}</h2><div class="type-links">${wines.map(w=>`<a href="#wine-${escape(w.id)}" data-action="section-jump" data-target="wine-${escape(w.id)}">${escape(name(w))}</a>`).join('')}</div></nav><p class="meta-line">${state.lang==='ja'?'以下は公式規定の色・香り・味わいです。個々のボトルの味を保証するものではありません。':'These are official sensory descriptions, not a guarantee of every bottle’s taste.'}</p>`;
-  return `<p class="eyebrow">${escape(t(state.route))}${entity.qualification ? ` · ${escape(entity.qualification)}` : ''}</p><h1>${escape(name(entity))}</h1>${original(entity) !== name(entity) ? `<p class="original">${escape(original(entity))}</p>` : ''}<p class="meta-line">${escape([name(find('country', parent?.countryId)), regionNames(parent ?? {}), state.route === 'appellation' ? parent?.gi : '', ...(state.route === 'appellation' ? parent?.traditionalTerms ?? [] : []), entity.level].filter(Boolean).join(' · '))}</p>${state.route === 'designation' && parent ? `<p>${escape(t('parent'))}: ${button(name(parent), 'navigate', `data-kind="appellation" data-id="${escape(parent.id)}"`, 'quiet')}</p>` : ''}<p class="notice">${escape(t('detailInfo'))}</p>${typeIndex}<div class="wines">${wines.map((wine,index) => wineHTML(wine, state.matchIds.includes(wine.id), common, sharedFields, index===0?sharedGrapes:'')).join('')}</div>${sharedFields.length ? `<details id="shared-regulations" tabindex="-1"><summary>${state.lang==='ja'?'呼称全体の区域・栽培・ラベル条件':'Appellation-wide conditions'}</summary><p>${state.lang==='ja'?'タイプごとの適用条件も含む条文をまとめています。ここに書かれた条件がすべてのタイプへ一律に適用されるとは限りません。':'These shared paragraphs can contain conditions for specific wine types; not every condition applies to every type.'}</p>${withReferenceContext(commonContext, () => sharedFields.map(k=>optionalHTML(wines[0][k],k,entity.id)).join(''))}</details>` : ''}${alcoholGuideHTML()}${conditionalAmendmentsHTML(entity)}${state.route === 'appellation' ? designationList(entity) : ''}${aboutLink(state.lang === 'ja' ? 'このアプリについて' : 'About this app')}${sourcesHTML(entity)}`;
+  const sharedGrapes = common ? withReferenceContext(commonContext, () => `<section id="common-grapes" tabindex="-1"><h2>${escape(t('commonRules'))}</h2><p>${state.lang==='ja'?'全タイプ共通の品種':'Grapes shared by all types'}</p>${grapeHTML(wines[0].grapeRule, entity.id)}</section>`) : '';
+  const indexLinks = entries => `<div class="type-links">${entries.map(w=>`<a href="#wine-${escape(w.id)}" data-action="section-jump" data-target="wine-${escape(w.id)}">${escape(shortWine(w))}</a>`).join('')}</div>`;
+  const matching = wines.filter(w=>state.matchIds.includes(w.id)), others = wines.filter(w=>!state.matchIds.includes(w.id));
+  const typeIndex = `<nav id="type-index" tabindex="-1" aria-label="${state.lang==='ja'?'ワインのタイプ':'Wine types'}"><h2>${state.lang==='ja'?'ワインのタイプ':'Wine types'}</h2>${state.filters.length?`<h3>${state.lang==='ja'?`今回の条件に合う${matching.length}タイプ`:`${matching.length} matching types`}</h3>${indexLinks(matching)}${others.length?`<details id="other-type-index"><summary>${state.lang==='ja'?`その他${others.length}タイプ`:`${others.length} other types`}</summary>${indexLinks(others)}</details>`:''}`:indexLinks(wines)}</nav><p class="meta-line">${state.lang==='ja'?'公式記述の日本語は参考訳・要約です。個々のボトルの味を保証するものではありません。':'Japanese descriptions are reference translations or summaries, not a guarantee of every bottle’s taste.'}</p>`;
+  return `<p class="eyebrow">${escape(t(state.route))}${entity.qualification ? ` · ${escape(entity.qualification)}` : ''}</p><h1>${escape(name(entity))}</h1>${original(entity) !== name(entity) ? `<p class="original">${escape(original(entity))}</p>` : ''}<p class="meta-line">${escape([name(find('country', parent?.countryId)), regionNames(parent ?? {}), state.route === 'appellation' ? parent?.gi : '', ...(state.route === 'appellation' ? parent?.traditionalTerms ?? [] : []), entity.level].filter(Boolean).join(' · '))}</p>${state.route === 'designation' && parent ? `<p>${escape(t('parent'))}: ${button(name(parent), 'navigate', `data-kind="appellation" data-id="${escape(parent.id)}"`, 'quiet')}</p>` : ''}<p class="notice">${escape(t('detailInfo'))}</p>${sharedGrapes}${typeIndex}<div class="wines">${wines.map((wine,index) => `${state.filters.length && (index===0 || state.matchIds.includes(wines[index-1].id)!==state.matchIds.includes(wine.id))?`<h2>${state.lang==='ja'?state.matchIds.includes(wine.id)?'今回の条件に合うタイプ':'その他のタイプ':state.matchIds.includes(wine.id)?'Matching types':'Other types'}</h2>`:''}${wineHTML(wine, state.matchIds.includes(wine.id), common, sharedFields)}`).join('')}</div>${sharedFields.length ? `<details id="shared-regulations" tabindex="-1"><summary>${state.lang==='ja'?'呼称全体の区域・栽培・ラベル条件':'Appellation-wide conditions'}</summary><p>${state.lang==='ja'?'タイプごとの適用条件も含む条文をまとめています。ここに書かれた条件がすべてのタイプへ一律に適用されるとは限りません。':'These shared paragraphs can contain conditions for specific wine types; not every condition applies to every type.'}</p>${withReferenceContext(commonContext, () => sharedFields.map(k=>optionalHTML(wines[0][k],k,entity.id)).join(''))}</details>` : ''}${alcoholGuideHTML()}${conditionalAmendmentsHTML(entity)}${state.route === 'appellation' ? designationList(entity) : ''}${aboutLink(state.lang === 'ja' ? 'このアプリについて' : 'About this app')}${sourcesHTML(entity)}`;
 }
 
 function designationList(entity) {
-  const entries = (data.designations ?? []).filter(item => item.appellationId === entity.id);
-  return entries.length ? `<section><h2>${escape(t('geoNames'))}</h2>${sort(entries).map(item => row(item, 'designation', [t('designation'), item.qualification].filter(Boolean).join(' · '))).join('')}</section>` : '';
+  const entries = sort((data.designations ?? []).filter(item => item.appellationId === entity.id));
+  const groups = new Map();
+  for (const item of entries) {
+    const qualification=item.qualification || '';
+    if (!groups.has(qualification)) groups.set(qualification,[]);
+    groups.get(qualification).push(item);
+  }
+  const itemRow=item=>row(item,'designation',[t('designation'),item.qualification].filter(Boolean).join(' · '));
+  return entries.length ? `<section class="designation-list"><h2>${escape(t('geoNames'))}</h2>${[...groups].map(([qualification,items],index)=>`<section>${qualification?`<h3>${escape(qualification)}</h3>`:''}${items.slice(0,6).map(itemRow).join('')}${items.length>6?`<details id="designations-${escape(entity.id)}-${index}"><summary>${state.lang==='ja'?`残り${items.length-6}件の地理的名称を表示`:`Show ${items.length-6} more geographic names`}</summary>${items.slice(6).map(itemRow).join('')}</details>`:''}</section>`).join('')}</section>` : '';
 }
 
 function getRecent() {
@@ -436,11 +510,12 @@ function recentHTML() {
 }
 
 function aboutHTML() {
-  return `<div class="about"><p class="eyebrow">Data & Sources</p><h1>${escape(t('about'))}</h1><p>${escape(t('aboutText'))}</p><p>${escape(t('aboutProcess'))}</p><p>${escape(t('aboutSearch'))}</p><p>${escape(t('aboutUpdate'))}</p><p class="notice">${escape(state.lang === 'ja' ? '日本語の読みは検索・表示のための編集表記です。公式な日本語名や法的同義名の認定ではありません。読みの外部根拠が未確認の品種もあり、原語名を併記します。日本語の説明がない項目は未対応と明示します。' : t('noTranslations'))}</p><dl><dt>${escape(t('version'))}</dt><dd>${escape(data.version)}</dd></dl><h2>${escape(t('sources'))}</h2>${(data.sources ?? []).map(source => `<article class="source"><p>${escape(source.agency)} · ${escape(source.title)}<br>${sourceAnchor(source)}</p>${source.archiveMember ? `<dl><dt>${escape(t('archiveDocument'))}</dt><dd>${escape(source.archiveMember)}</dd></dl>` : ''}${sourceIdentityHTML(source)}</article>`).join('')}</div>`;
+  return `<div class="about"><p class="eyebrow">Data & Sources</p><h1>${escape(t('about'))}</h1>${coverageHTML()}<p>${escape(t('aboutText'))}</p><p>${escape(t('aboutProcess'))}</p><p>${escape(t('aboutSearch'))}</p><p>${escape(t('aboutUpdate'))}</p><p class="notice">${escape(state.lang === 'ja' ? '日本語の読みは検索・表示のための編集表記です。公式な日本語名や法的同義名の認定ではありません。読みの外部根拠が未確認の品種もあり、原語名を併記します。日本語の説明がない項目は未対応と明示します。' : t('noTranslations'))}</p><dl><dt>${escape(t('version'))}</dt><dd>${escape(data.version)}</dd></dl><h2>${escape(t('sources'))}</h2>${(data.sources ?? []).map(source => `<article class="source"><p>${escape(source.agency)} · ${escape(source.title)}<br>${sourceAnchor(source)}</p>${source.archiveMember ? `<dl><dt>${escape(t('archiveDocument'))}</dt><dd>${escape(source.archiveMember)}</dd></dl>` : ''}${sourceIdentityHTML(source)}</article>`).join('')}</div>`;
 }
 
 function render() {
   if (!data) return;
+  state.filters = state.filters.filter(f => !(f.kind === state.route && f.id === state.id && f.mode === 'include'));
   renderHeader();
   $('main').innerHTML = state.route === 'home' ? homeHTML() : ['country', 'region'].includes(state.route) ? regionHTML() : ['appellation', 'designation'].includes(state.route) ? detailsHTML() : state.route === 'recent' ? recentHTML() : aboutHTML();
   if (!$('results') && (state.invalidLink || invalidFilters().length)) $('main').insertAdjacentHTML('afterbegin', `<p class="notice" role="alert">${escape(t('invalidLink'))}</p>${button(t('reset'), 'reset-filters')}`);
@@ -462,7 +537,7 @@ function renderOverlay() {
   if (overlay?.type !== 'chip') return;
   const filter = state.filters[overlay.index];
   if (!filter) { closeDialog(); return; }
-  $('sheet').innerHTML = `<div class="sheet-head"><strong>${escape(name(find(filter.kind, filter.id)))}</strong>${button(t('close'), 'close-overlay')}</div><div class="sheet-body">${filter.kind === 'grape' ? `<p>${escape(t('excludeHelp'))}</p>` : ''}<div class="menu-options">${button(t('include'), 'change-filter', 'data-mode="include"')}${button(t('exclude'), 'change-filter', 'data-mode="exclude"')}${button(t('remove'), 'change-filter', 'data-mode="remove"')}</div></div>`;
+  $('sheet').innerHTML = `<div class="sheet-head"><strong>${escape(name(find(filter.kind, filter.id)))}</strong>${button(t('close'), 'close-overlay')}</div><div class="sheet-body">${filter.kind === 'grape' ? `<p>${escape(t('excludeHelp'))}</p>` : ''}<div class="menu-options">${button(filter.kind==='grape' && state.lang==='ja'?'使用可能':t('include'), 'change-filter', 'data-mode="include"')}${button(filter.kind==='grape' && state.lang==='ja'?'不使用でも可':t('exclude'), 'change-filter', 'data-mode="exclude"')}${button(t('remove'), 'change-filter', 'data-mode="remove"')}</div></div>`;
   if (!$('sheet').open) $('sheet').showModal();
   document.body.style.overflow = 'hidden';
 }
@@ -488,7 +563,7 @@ function addFilter(kind, id, mode = 'include') {
   saveEntry();
 }
 
-document.addEventListener('click', event => {
+document.addEventListener('click', async event => {
   if (event.target.closest('.skip-link')) { event.preventDefault(); $('main').focus(); return; }
   const target = event.target.closest('[data-action]');
   if (!target || !data) return;
@@ -499,7 +574,13 @@ document.addEventListener('click', event => {
     if (action === 'candidate-navigate') { replace({query:''},false); if ($('query')) $('query').value=''; candidatesHidden=true; }
     navigate(kind, id || null);
   }
-  else if (action === 'open-match') navigate(kind, id, { filters: activeFilters(), matchIds: (target.dataset.wines || '').split(',').filter(Boolean) });
+  else if (action === 'open-match') navigate(kind, id, { contextWine: target.dataset.wine || null });
+  else if (action === 'widen-scope') navigate('home',null,{query:'',originScope:null});
+  else if (action === 'copy-search') {
+    const url = new URL(urlFor({...state,query:''}),location.href).href;
+    try { await navigator.clipboard.writeText(url); $('copy-feedback').textContent = state.lang==='ja'?'リンクをコピーしました':'Link copied'; }
+    catch { $('copy-feedback').innerHTML = `<label>${state.lang==='ja'?'コピーできませんでした。以下のリンクを選択してコピーしてください。':'Copy failed. Select and copy this link.'}<input readonly value="${escape(url)}"></label>`; $('copy-feedback').querySelector('input').select(); }
+  }
   else if (action === 'language') { preferredLanguage = target.dataset.language; replace({ lang: preferredLanguage }); }
   else if (action === 'clear-recent') { try { localStorage.removeItem('ae-recent-v1'); render(); $('main').focus(); toast(state.lang === 'ja' ? '閲覧履歴を消去しました。検索条件は保持しています。' : 'History cleared. Search filters are retained.'); } catch { toast(state.lang === 'ja' ? 'この端末では履歴を消去できませんでした。' : 'Could not clear local history.'); } }
   else if (action === 'more-candidates') { candidateLimit += 12; renderCandidates(); }
@@ -523,11 +604,11 @@ document.addEventListener('click', event => {
     history.back();
   } else if (action === 'grape-link') {
     const wasExclude = state.filters.some(item => item.kind === 'grape' && item.id === id && item.mode === 'exclude');
-    navigate('home', null, { query: '', filters: upsertFilter(state.filters, { kind: 'grape', id }, 'include') });
+    navigate(state.originScope?.route || 'home', state.originScope?.id || null, { query: '', filters: upsertFilter(state.filters, { kind: 'grape', id }, 'include') });
     if (wasExclude) toast(t('changed'));
   } else if (action === 'section-jump') {
     event.preventDefault(); const destination=$(target.dataset.target);
-    if (destination) { if (destination.tagName==='DETAILS') destination.open=true; destination.focus({preventScroll:true}); destination.scrollIntoView({block:'start'}); saveEntry(); }
+    if (destination) { for (let parent=destination.parentElement; parent; parent=parent.parentElement) if (parent.tagName==='DETAILS') parent.open=true; if (target.dataset.target === 'alcohol-guide') { const wine=target.closest('.wine'); $('guide-return').innerHTML = wine ? `<a href="#${wine.id}" data-action="section-jump" data-target="${wine.id}">${state.lang==='ja'?'読んでいたタイプへ戻る':'Return to wine type'}</a>` : ''; } if (destination.tagName==='DETAILS') destination.open=true; destination.focus({preventScroll:true}); destination.scrollIntoView({block:'start'}); saveEntry(); }
   } else if (action === 'common-jump') { event.preventDefault(); $('common-grapes')?.focus(); saveEntry();
 
   }
@@ -551,8 +632,16 @@ document.addEventListener('keydown', event => {
 document.addEventListener('compositionstart', event => { if (event.target.id === 'query') composingQuery = true; });
 document.addEventListener('compositionend', event => { if (event.target.id === 'query') composingQuery = false; });
 
+function filterGrapeList(input) {
+  const container = input.closest('.grape-list');
+  const found = new Set(findCandidates(data,input.value,state.lang).filter(c=>c.kind==='grape').map(c=>c.id));
+  const buttons = [...container.querySelectorAll('.grape-buttons .grape-link')];
+  const matching = buttons.filter(b=>found.has(b.dataset.id));
+  container.querySelector('.grape-search-results').innerHTML = input.value.trim() ? `<p>${state.lang==='ja'?`この一覧内の候補：${matching.length}件`:`${matching.length} suggestions in this list`}</p>`+matching.map(b=>b.outerHTML).join('') : '';
+}
+
 document.addEventListener('input', event => {
-  if (event.target.matches('[data-grape-search]')) { const q = event.target.value; const found = new Set(findCandidates(data, q, state.lang).filter(c => c.kind === 'grape').map(c => c.id)); event.target.closest('.grape-list').querySelectorAll('.grape-link').forEach(button => { button.hidden = Boolean(q) && !found.has(button.dataset.id); }); return; }
+  if (event.target.matches('[data-grape-search]')) { filterGrapeList(event.target); saveEntry(); return; }
   if (event.target.id !== 'query') return;
   candidateLimit = 12; candidatesHidden = false;
   replace({ query: event.target.value }, false);
@@ -560,7 +649,7 @@ document.addEventListener('input', event => {
 });
 
 document.addEventListener('toggle', event => {
-  if (event.target.tagName === 'DETAILS' && !overlay) saveEntry();
+  if (event.target.tagName === 'DETAILS' && !overlay) { saveEntry(); updateTypeSeparators(); }
 }, true);
 
 $('sheet').addEventListener('cancel', event => { event.preventDefault(); history.back(); });
