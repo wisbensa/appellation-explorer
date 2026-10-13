@@ -24,3 +24,9 @@
 /* Keep each breadcrumb separator with its destination, including wrapped labels. */
 .path{align-items:center}.path-item{display:inline-flex;align-items:center;gap:.3rem;min-width:0;max-width:100%}.path button{min-width:0;overflow-wrap:anywhere;text-align:left}.path-item>span{flex:none;line-height:1.6}.grape-composition .grape-link{max-width:100%;overflow-wrap:anywhere;text-align:left}#common-grapes h2{margin-top:0}#common-grapes h2 small{font-weight:400;letter-spacing:normal}.grape-conditions{margin:.8rem 0}
 #common-grapes h2 small{display:inline-block}
+
+/* Suggestions belong to the input; committed filters follow the suggestions. */
+.search-scope{margin:0 0 .45rem;font-size:.85rem;color:var(--muted)}.candidates{margin-top:0;max-height:55dvh}.candidate-group h3{margin:.3rem 0;padding:.2rem 0}.candidate-name small{font-size:.8rem}.candidate-actions button{font-size:.75rem;padding:.3rem}.search-box:has(#query:focus) .search-label{margin-bottom:.3rem}#query{scroll-margin-top:.5rem}.path-current{padding:.3rem .4rem;min-height:44px;display:inline-flex;align-items:center;overflow-wrap:anywhere}.path-item{flex-shrink:1}.ratio-members .grape-buttons{margin:.5rem 0}header>.quiet{min-width:0;overflow-wrap:anywhere;text-align:left}header .lang{flex-shrink:0}
+.path-current{display:block;min-width:0}.brand{min-width:0;overflow-wrap:anywhere}
+.path-item>.path-current{flex:1 1 auto}
+.candidate{flex-wrap:wrap}.candidate-name{flex-basis:12rem}.candidate-actions{max-width:100%;flex-wrap:wrap;margin-left:auto}.candidate-actions button{max-width:100%}.skip-link{top:0;transform:translateY(-100%)}.skip-link:focus{transform:none}
