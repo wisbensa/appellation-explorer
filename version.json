@@ -1,20 +1,20 @@
 {
-  "artifactVersion": "3e1345dc758ecddbecfd",
+  "artifactVersion": "f2fcab10b85c05c7ed7c",
   "counts": {
-    "appellations": 8,
+    "appellations": 20,
     "designations": 0,
     "regions": 2
   },
-  "dataVersion": "29ce4536cbecf9316f24",
+  "dataVersion": "3c3dadbe72071de15218",
   "files": {
     ".nojekyll": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "app.js": "def7f44b3f9c12d3821ba4c13a1cb0ebccca79c72d49ac2b3fedbc2a7f977868",
-    "data.json": "5e546c55bc342c9737b4ba4c0327469d602489c7c7a7cecae7f19e0ecbdda153",
+    "data.json": "8e9848ee4761add1da714fcef1ef09c181b3c868d6b85c9d796d792352fdb027",
     "index.html": "d86928025be4608eef55381b996c0155d94ae8738249570b0ab4dab3746f9e5c",
     "lib/blend.mjs": "713d2ec479b150c23ed25d03ee10927d4f2372b731e78d499fbbef761b0c23fc",
-    "lib/display-names.mjs": "d58ed0159104eb55e9e8c2b59ad8aa902723c69922fdc0a817dab831f91480f8",
+    "lib/display-names.mjs": "23abbe5a1be7232c6b399ef0d4ba80a392a2d4fbb82fff9f4bfeb06bfa1cd8a1",
     "lib/field-integrity.mjs": "0153d6edc15f1e7e006f428ab02d0090177ea8eafdb661308b121abe379f2524",
-    "lib/regulation-explanations.mjs": "7d064124b1dc57a4589441823e7268f1264560eb19f811d7a143418103081bca",
+    "lib/regulation-explanations.mjs": "5764a24da310f9a2ec9da753c715427b3f76a591fddeb4988166e8f1a2f8862a",
     "lib/search.mjs": "fc8aa2f6e1d00597cdc599fec441a5c1134b5b6a7829d88048207d9372321715",
     "styles.css": "1e8c6ae945a89d01717cbd4081fb231f25f32b23ccc00b31ed90adec94ceb60d"
   },
