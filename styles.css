@@ -6,7 +6,7 @@
 
 .filters-heading{font-family:inherit;font-size:.95rem;margin:.8rem 0 .4rem}.chip-pair{display:inline-flex;max-width:100%;align-items:stretch}.chip-pair .chip{border-radius:.6rem 0 0 .6rem;overflow-wrap:anywhere}.chip-remove{border-radius:0 .6rem .6rem 0;min-width:44px}.candidate-name:focus-visible{background:#f2e9e4}
 
-.type-links{display:flex;flex-wrap:wrap;gap:.5rem}.type-links a{display:flex;align-items:center;min-height:44px;padding:.5rem .7rem;border:1px solid var(--line);border-radius:.5rem;overflow-wrap:anywhere}.wine,#type-index,#shared-regulations,#alcohol-guide{scroll-margin-top:1rem}.home-region{min-width:0}.home-region>.row:not(:first-child){font-size:.9rem;padding-left:1rem}.duty-proof{font-size:.9rem}
+.type-links{display:flex;flex-wrap:wrap;gap:.5rem}.type-links a{display:flex;align-items:center;min-height:44px;padding:.5rem .7rem;border:1px solid var(--line);border-radius:.5rem;overflow-wrap:anywhere}.wine,#type-index,#shared-regulations,#alcohol-guide{scroll-margin-top:1rem}.duty-proof{font-size:.9rem}
 .result-match{display:inline-block;padding:.2rem .65rem .2rem 0;border:0;vertical-align:top}
 
 /* Source evidence is reached through one closed disclosure at the detail footer. */
@@ -43,9 +43,6 @@ p{margin:.4rem 0 .6rem}h1{margin:.45rem 0}h2{margin:1rem 0 .45rem}h3{margin:.45r
 .row{position:relative;padding:.55rem 1.5rem .55rem .3rem}
 .row:after{position:absolute;right:.5rem;top:50%;transform:translateY(-50%);float:none}
 .country-grid,.region-grid{gap:.45rem}.country-grid .row,.region-grid .row{padding:.55rem 1.5rem .55rem .65rem}
-.home-region{border:1px solid var(--line);border-radius:.6rem;overflow:hidden}
-.region-grid .home-region>.row{border:0;border-bottom:1px solid var(--line);border-radius:0}
-.region-grid .home-region>.row:first-child{background:#f2f4ee}.home-region>.row:last-child{border-bottom:0}
 .result-card{padding:.65rem;margin:.6rem 0}.result-card p{margin:.3rem 0 .45rem}.result-card>details{margin:.2rem 0}
 .results-count{gap:.35rem;padding:.35rem 0}.type-links{gap:.35rem}.type-links a{padding:.3rem .6rem}
 .wines{margin-top:.75rem}.wine{padding:.7rem 0 .8rem}.rule{margin:.4rem 0}
@@ -105,3 +102,7 @@ main{padding-top:.4rem}p{margin:.25rem 0 .45rem}h2{margin:.75rem 0 .35rem}
   .menu-options{gap:.3rem}
   .menu-options button{padding:.2rem .4rem;line-height:1.2}
 }
+/* Country selection and non-navigating country-profile headings. */
+.country-grid,.browse-region-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:.4rem .8rem}
+.browse-region-group{margin:.9rem 0 1.1rem}.browse-region-group h3{font-size:1rem;color:var(--muted);margin:.4rem 0;border-bottom:1px solid var(--line);padding-bottom:.35rem}
+.country-grid .row,.browse-region-list .row{min-width:0;overflow-wrap:anywhere;padding:.65rem 1.5rem .65rem .65rem}.country-grid .row-title,.browse-region-list .row-title{font-size:1rem}
