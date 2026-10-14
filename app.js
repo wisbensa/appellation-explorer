@@ -13,7 +13,7 @@ Object.assign(words.en, { archiveDocument: 'Document in archive', documentHash: 
 Object.assign(words.ja, { conditionalChanges: '条件付きの変更', ageingLocation: '熟成場所', actDate: '法令の日付', commencement: '開始の基準', applicabilityUnknown: 'この条件の現在の適用状態は未確認です。公示日を基準とする条件を保持しています。', applicabilityActive: 'この条件が適用されることを確認しています。', applicabilityExpired: 'この条件の適用期間が終了したことを確認しています。' });
 Object.assign(words.en, { conditionalChanges: 'Conditional amendments', ageingLocation: 'Ageing location', actDate: 'Act date', commencement: 'Commencement', applicabilityUnknown: 'Current applicability of this condition is unverified. Its publication-relative conditions are retained.', applicabilityActive: 'This condition is confirmed to apply.', applicabilityExpired: 'This condition is confirmed to have expired.' });
 
-Object.assign(words.ja, { basis_vineyard: '割合の対象：原料を採る畑', basis_grapes: '割合の対象：使用ぶどう', basis_must: '割合の対象：果汁・果醪', basis_wine: '割合の対象：ワイン', basis_mixed: '割合の対象：複数の段階', basis_unknown: '割合の対象：未確認', basisNotice: '畑・原料葡萄・果汁・完成ワインの比率は同じものではありません。この規定では、品種の使用可否を判定できない条件が残っています。', sourceUseNotice: '品種の使用可否は、規定されたブドウの由来から判定します。表示比率を完成ワインの配合へ換算していません。植栽上の必須性だけでは、その品種の使用が必須とは断定しません。', listedGrapes: '規定に記載された品種' });
+Object.assign(words.ja, { basis_vineyard: '栽培するブドウ品種の割合', basis_grapes: '使用するブドウ品種の割合', basis_must: '果汁・果醪に使う品種の割合', basis_wine: 'ワインに使う品種の割合', basis_mixed: '複数の段階に関わる割合', basis_unknown: '割合の対象は未確認', basisNotice: '畑・原料葡萄・果汁・完成ワインの比率は同じものではありません。この規定では、品種の使用可否を判定できない条件が残っています。', sourceUseNotice: '品種の使用可否は、規定されたブドウの由来から判定します。表示比率を完成ワインの配合へ換算していません。植栽上の必須性だけでは、その品種の使用が必須とは断定しません。', listedGrapes: '規定に記載された品種' });
 Object.assign(words.en, { basis_vineyard: 'Source-vineyard variety composition', basis_grapes: 'Raw grape composition', basis_must: 'Must composition', basis_wine: 'Finished-wine composition', basis_mixed: 'Rules covering multiple production stages', basis_unknown: 'Ratio basis not yet verified', basisNotice: 'Vineyard, raw grape, must and finished-wine proportions are distinct. Some grape-use conditions remain unresolved under these rules.', sourceUseNotice: 'Grape-use permission follows the stated fruit sources. Displayed ratios are not converted into a finished-wine recipe. Required planting alone does not establish mandatory fruit use.', listedGrapes: 'Grapes listed in the regulation' });
 
 Object.assign(words.ja, { addExclude: '除外条件に追加', changeExclude: '除外条件に変更', not_found: 'この項目はまだ確認できていません。規定がないことを意味しません。', unverified: '内容の確認が未完了です。', noCandidates: '収録範囲に一致する候補がありません。未収録の名称もあります。', missingTarget: 'この対象は現在の収録データに見つかりません。', invalidLink: '共有条件の一部が壊れているか、現在のデータでは対象不明です。条件を確認・削除してください。', reset: '条件をクリアしてやり直す', coverage: '収録範囲', moreCandidates: '候補をさらに表示', grapeSearch: 'この一覧から品種を探す', commonRules: '品種構成', commonReference: '共通の品種・適用条件を見る', cultivation: '栽培・比率の根拠', totalAlcohol: '総アルコール度数', actualAlcohol: '実アルコール度数', naturalAlcohol: '天然アルコール度数', totalAgeing: '総熟成', wood: '木樽での熟成', bottle: '瓶内熟成', included_in_total: '総熟成期間の内数', varietalLabelling: 'ボトルラベルに品種名を記載する場合', unknownNames: '判定できない呼称', archiveDownload: '7zアーカイブをダウンロード', sourceDocument: '公式文書', rawOnly: '詳細は下の根拠・原文で確認できます。' });
@@ -338,16 +338,37 @@ function grapeHTML(rule, prefix) {
     return soleSource ? '' : `<p>${escape(name(find('grape', id)))}${ja ? 'は使用が必要です。' : ' must be used. '}</p>`;
   }).join('');
   const uncertain = ids.some(id => evaluateGrapeUse(rule, [], [id]).status === 'unknown') ? `<p>${escape(ja ? '使えることと、必ず使うことは別です。使用が必須か確認できていない品種は、使わずに造れるとも断定していません。' : 'Permission and mandatory use differ. Unproved mandatory use does not prove a grape can be omitted.')}</p>` : '';
-  const constraints = (rule.alternatives ?? [rule]).map(alternative => (alternative.constraints ?? []).filter(c => !required.some(id => c.grapeIds.length === 1 && c.grapeIds[0] === id && c.minExclusive && c.min === 0 && ratioBasis(alternative, c) !== 'vineyard')).map(constraint => {
-    if (regional) return `<p>${escape(ja ? '対象の畑は、この認可品種の範囲で構成されます。各品種をすべて植えるという意味ではありません。' : 'The source vineyards use varieties from this permitted list; not every variety must be planted.')}</p>`;
-    const outside = (alternative.grapeIds || ids).filter(id=>!constraint.grapeIds.includes(id));
-    const groupLabel = ja ? `${outside.length?'その他の':'対象の'}認可品種${constraint.grapeIds.length}種${outside.length ? `（${outside.map(id=>name(find('grape',id))).join('・')}を除く）` : ''}` : `${constraint.grapeIds.length} permitted varieties${outside.length ? ` (excluding ${outside.map(id=>name(find('grape',id))).join(', ')})` : ''}`;
-    const label = constraint.grapeIds.length > 6 ? escape(groupLabel) : constraint.grapeIds.map(grapeLink).join(' / ');
-    return `<p><span class="ratio-basis">${escape(t('basis_' + ratioBasis(alternative, constraint)))}</span><br>${label}${constraint.grapeIds.length > 1 ? ja ? '（合わせて）' : ' (combined)' : ''}: ${ratioHTML(constraint)}</p>${constraint.grapeIds.length > 6 && outside.length ? `<details class="ratio-members" id="members-${escape(prefix)}-${escape(constraint.grapeIds.join('-'))}"><summary>${ja?'この比率の対象品種を見る':'View varieties covered by this ratio'}</summary><div class="grape-buttons">${constraint.grapeIds.map(grapeLink).join('')}</div></details>` : ''}`;
-  }).join('')).join('<hr>');
+  const visibleConstraints = alternative => (alternative.constraints ?? []).filter(c => !required.some(id => c.grapeIds.length === 1 && c.grapeIds[0] === id && c.minExclusive && c.min === 0 && ratioBasis(alternative, c) !== 'vineyard'));
+  const ratioBases = new Set((rule.alternatives ?? [rule]).flatMap(alternative => visibleConstraints(alternative).map(c => ratioBasis(alternative, c))));
+  const constraints = (rule.alternatives ?? [rule]).map(alternative => {
+    const groups = new Map();
+    visibleConstraints(alternative).forEach((constraint, index) => {
+      const basis = ratioBasis(alternative, constraint);
+      const scope = constraint.scope ?? alternative.scope ?? rule.scope ?? '';
+      // Never merge alternatives, different scopes, or unverified/conditional denominators.
+      const key = JSON.stringify([basis, scope, ['unknown','mixed'].includes(basis) || constraint.conditions || constraint.applicability ? index : null]);
+      if (!groups.has(key)) groups.set(key, {basis, scope, constraints:[]});
+      groups.get(key).constraints.push(constraint);
+    });
+    return [...groups.values()].map(group => {
+      if (regional) return `<p>${escape(ja ? '対象の畑は、この認可品種の範囲で構成されます。各品種をすべて植えるという意味ではありません。' : 'The source vineyards use varieties from this permitted list; not every variety must be planted.')}</p>`;
+      const rows = group.constraints.map(constraint => {
+        const outside = (alternative.grapeIds || ids).filter(id=>!constraint.grapeIds.includes(id));
+        const multiple = constraint.grapeIds.length > 1;
+        const groupLabel = ja ? `${outside.length?'その他の':'対象の'}認可品種${constraint.grapeIds.length}種${outside.length ? `（${outside.map(id=>name(find('grape',id))).join('・')}を除く）` : ''}` : `${constraint.grapeIds.length} permitted varieties${outside.length ? ` (excluding ${outside.map(id=>name(find('grape',id))).join(', ')})` : ''}`;
+        const label = constraint.grapeIds.length > 6 ? escape(groupLabel) : multiple ? escape(ja ? `${outside.length ? 'その他の' : ''}使用可能品種` : `${outside.length ? 'Other permitted' : 'Permitted'} varieties`) : grapeLink(constraint.grapeIds[0]);
+        const members = multiple && constraint.grapeIds.length <= 6 ? `<ul class="ratio-varieties">${constraint.grapeIds.map(id=>`<li>${grapeLink(id)}</li>`).join('')}</ul>` : '';
+        return `<div class="ratio-row"><p>${label}${multiple ? ja ? '（合わせて）' : ' (combined)' : ''}: <strong>${multiple ? escape(t('total')) + ' ' : ''}${ratioHTML(constraint)}</strong></p>${members}</div>${constraint.grapeIds.length > 6 && outside.length ? `<details class="ratio-members" id="members-${escape(prefix)}-${escape(constraint.grapeIds.join('-'))}"><summary>${ja?'この比率の対象品種を見る':'View varieties covered by this ratio'}</summary><div class="grape-buttons">${constraint.grapeIds.map(grapeLink).join('')}</div></details>` : ''}`;
+      }).join('');
+      const basisLabel = ratioBases.size > 1 || ['unknown','mixed'].includes(group.basis) ? t('basis_' + group.basis) : '';
+      const groupScope = group.scope && group.scope !== rule.scope ? scopeText(group.scope) : '';
+      const note = [basisLabel,groupScope].filter(Boolean).join(' · ');
+      return `<section class="ratio-group" data-ratio-basis="${escape(group.basis)}">${note ? `<p class="ratio-basis">${escape(note)}</p>` : ''}${rows}</section>`;
+    }).join('');
+  }).join('<hr>');
   const estate = /(?:nell['’]ambito|in ambito) aziendale/i.test(wording);
   const vineyard = (rule.constraints || []).some(c => ratioBasis(rule, c) === 'vineyard');
-  const explanation = vineyard ? ja ? `この呼称に使うブドウの供給元となる、${estate ? '生産者単位の' : ''}対象畑の条件です。ボトルの配合率ではなく、原料重量・容量への換算はしていません。` : 'These are conditions on the source vineyards, not a separate kind of grape or the proportions in a bottle.' : t('sourceUseNotice');
+  const explanation = vineyard ? ja ? `栽培する畑の品種構成について定めた規定を含みます。${estate ? '対象は生産者がこの呼称のために栽培する畑全体です。1枚の畑に、この割合で混植するという意味ではありません。' : ''}割合の適用は関連条文も含めて確認してください。ここでは原料重量・ワイン容量などへの換算はしていません。` : 'These rules include conditions on source vineyards. Read the related provisions when interpreting the proportions; no conversion to grape weight or wine volume is made here.' : t('sourceUseNotice');
   deferReference('composition', prefix, `<p>${escape(scopeText(rule.scope || ''))}</p><p>${escape(summary)}</p><p>${escape(explanation)}</p>${constraints.replaceAll('id="members-', 'id="source-members-')}${rule.original ? `<details id="raw-${escape(prefix)}"><summary>${escape(t('raw'))}</summary><p lang="it">${escape(rule.original)}</p></details>` : ''}${evidenceHTML(rule.evidence, `${prefix}-grapes`)}`);
   const covered = new Set((rule.alternatives ?? [rule]).flatMap(r=>(r.constraints ?? []).flatMap(c=>c.grapeIds)));
   const composition = regional ? '' : soleSource ? `<p class="grape-composition">${grapeLink(ids[0])}：100%</p>` : `<div class="grape-composition">${constraints}</div>`;

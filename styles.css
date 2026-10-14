@@ -61,3 +61,7 @@ header{flex-wrap:wrap}.brand,header>.quiet{flex:1 1 10rem}
 .grape-guide{font-size:.9rem;color:var(--muted)}.grape-guide summary{font-size:.9rem}
 
 .regulation-heading,.rule-label.regulation-heading{font-family:inherit;font-size:1rem;font-weight:600;line-height:1.35;letter-spacing:normal;color:var(--ink);margin:.45rem 0}.ratio-basis{font-size:.9rem;color:var(--muted)}
+
+.ratio-group{margin:.5rem 0}.ratio-group>.ratio-basis{margin:0 0 .25rem}.ratio-row{border-left:2px solid var(--line);padding-left:.5rem;margin:.3rem 0}.ratio-row strong{white-space:nowrap}
+
+.ratio-row>p{margin:0}.ratio-varieties{list-style:none;margin:.15rem 0 0;padding:0}.ratio-varieties li{margin:0}.ratio-varieties .grape-link{display:inline-flex;align-items:center}
