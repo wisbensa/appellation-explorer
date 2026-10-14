@@ -1,5 +1,5 @@
 {
-  "artifactVersion": "f2fcab10b85c05c7ed7c",
+  "artifactVersion": "06b18621faa0654a2464",
   "counts": {
     "appellations": 20,
     "designations": 0,
@@ -16,7 +16,7 @@
     "lib/field-integrity.mjs": "0153d6edc15f1e7e006f428ab02d0090177ea8eafdb661308b121abe379f2524",
     "lib/regulation-explanations.mjs": "5764a24da310f9a2ec9da753c715427b3f76a591fddeb4988166e8f1a2f8862a",
     "lib/search.mjs": "fc8aa2f6e1d00597cdc599fec441a5c1134b5b6a7829d88048207d9372321715",
-    "styles.css": "1e8c6ae945a89d01717cbd4081fb231f25f32b23ccc00b31ed90adec94ceb60d"
+    "styles.css": "2e77caf491d900ab7ec96574934a1a68527a38ef1361b746ba3d31bc422007eb"
   },
   "fixture": false,
   "schemaVersion": 1
