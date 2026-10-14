@@ -30,3 +30,32 @@
 .path-current{display:block;min-width:0}.brand{min-width:0;overflow-wrap:anywhere}
 .path-item>.path-current{flex:1 1 auto}
 .candidate{flex-wrap:wrap}.candidate-name{flex-basis:12rem}.candidate-actions{max-width:100%;flex-wrap:wrap;margin-left:auto}.candidate-actions button{max-width:100%}.skip-link{top:0;transform:translateY(-100%)}.skip-link:focus{transform:none}
+
+.home-title{font-size:1.125rem}
+
+/* Compact spacing preserves text sizes, hierarchy and 44px controls. */
+header{padding:.5rem 1.1rem;gap:.6rem}main{padding:.65rem 1.1rem 3rem}
+p{margin:.4rem 0 .6rem}h1{margin:.45rem 0}h2{margin:1rem 0 .45rem}h3{margin:.45rem 0}
+.search-box{margin:.75rem 0;padding:.65rem}.search-label{margin-bottom:.3rem}
+.chips{margin-top:.4rem;gap:.35rem}.filters-heading{margin:.5rem 0 .25rem}
+.candidate{padding:.2rem 0}.candidate-group h3{margin:.2rem 0}
+.row{position:relative;padding:.55rem 1.5rem .55rem .3rem}
+.row:after{position:absolute;right:.5rem;top:50%;transform:translateY(-50%);float:none}
+.country-grid,.region-grid{gap:.45rem}.country-grid .row,.region-grid .row{padding:.55rem 1.5rem .55rem .65rem}
+.home-region{border:1px solid var(--line);border-radius:.6rem;overflow:hidden}
+.region-grid .home-region>.row{border:0;border-bottom:1px solid var(--line);border-radius:0}
+.region-grid .home-region>.row:first-child{background:#f2f4ee}.home-region>.row:last-child{border-bottom:0}
+.result-card{padding:.65rem;margin:.6rem 0}.result-card p{margin:.3rem 0 .45rem}.result-card>details{margin:.2rem 0}
+.results-count{gap:.35rem;padding:.35rem 0}.type-links{gap:.35rem}.type-links a{padding:.3rem .6rem}
+.wines{margin-top:.75rem}.wine{padding:.7rem 0 .8rem}.rule{margin:.4rem 0}
+#common-grapes{padding:.65rem;margin:.75rem 0}.grape-list{margin:.55rem 0}
+#common-grapes .grape-list{border:0;border-radius:0;padding:0}.grape-conditions{margin:.5rem 0}
+.grape-search-results{padding:.25rem 0}.grape-buttons{gap:.35rem}
+.notice{padding:.6rem .75rem}.empty{padding:.8rem}.source{padding:.55rem 0}
+.sources-disclosure{margin-top:1rem;padding-top:.4rem}.reference-group{margin-block:1rem}
+.footer-link{margin-top:1rem}.sheet-head{padding:.55rem .8rem}.sheet-body{padding:.65rem .8rem 1rem}
+@media(max-width:430px){header{padding:.45rem .85rem}main{padding:.55rem .85rem 3rem}}
+/* At enlarged text, give the brand/return destination its own row when needed. */
+header{flex-wrap:wrap}.brand,header>.quiet{flex:1 1 10rem}
+
+.grape-guide{font-size:.9rem;color:var(--muted)}.grape-guide summary{font-size:.9rem}
