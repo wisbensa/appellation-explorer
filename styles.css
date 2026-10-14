@@ -59,3 +59,5 @@ p{margin:.4rem 0 .6rem}h1{margin:.45rem 0}h2{margin:1rem 0 .45rem}h3{margin:.45r
 header{flex-wrap:wrap}.brand,header>.quiet{flex:1 1 10rem}
 
 .grape-guide{font-size:.9rem;color:var(--muted)}.grape-guide summary{font-size:.9rem}
+
+.regulation-heading,.rule-label.regulation-heading{font-family:inherit;font-size:1rem;font-weight:600;line-height:1.35;letter-spacing:normal;color:var(--ink);margin:.45rem 0}.ratio-basis{font-size:.9rem;color:var(--muted)}
