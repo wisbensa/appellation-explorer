@@ -103,6 +103,7 @@ function replace(extra, redraw = true) {
   state.filters = state.filters.filter(f=>!(f.kind===state.route && f.id===state.id && f.mode==='include'));
   history.replaceState({ ae: true, depth, state, snapshot, overlay }, '', urlFor(state));
   if (redraw) render();
+  else document.querySelector('header .brand')?.setAttribute('href', homeURL());
 }
 
 function restoreSnapshot() {
@@ -146,11 +147,13 @@ function returnLabel() {
   if (['appellation','designation'].includes(previous.route)) return state.lang === 'ja' ? `${name(find(previous.route,previous.id))}へ戻る` : `Back to ${name(find(previous.route,previous.id))}`;
   return state.lang === 'ja' ? `${t(previous.route==='recent'?'recent':previous.route==='about'?'about':'home')}へ戻る` : `Back to ${t(previous.route==='recent'?'recent':previous.route==='about'?'about':'home')}`;
 }
+function homeURL() { return urlFor({...state, route:'home', id:null, contextWine:null, originScope:null}); }
 function renderHeader() {
   const exploring = ['country','region'].includes(state.route) && !state.contextualSearch;
   const canReturn = depth > 0 && state.returnTo;
-  const left = exploring || (state.route === 'home' && !canReturn) ? '<span class="brand">Appellation Explorer</span>' : button(canReturn ? returnLabel() : t('home'), canReturn ? 'back' : 'home', '', 'quiet');
-  $('header').innerHTML = `${left}<div class="lang" aria-label="Language">${['ja', 'en'].map(lang => button(lang.toUpperCase(), 'language', `data-language="${lang}" aria-pressed="${state.lang === lang}"`)).join('')}</div>`;
+  const brand = `<a class="brand" href="${escape(homeURL())}" data-action="brand-home" aria-label="${state.lang==='ja'?'Appellation Explorer — ホーム':'Appellation Explorer — Home'}">Appellation Explorer</a>`;
+  const back = !exploring && canReturn ? button(returnLabel(), 'back', '', 'quiet header-return') : '';
+  $('header').innerHTML = `${brand}<div class="lang" aria-label="Language">${['ja', 'en'].map(lang => button(lang.toUpperCase(), 'language', `data-language="${lang}" aria-pressed="${state.lang === lang}"`)).join('')}</div>${back}`;
   document.documentElement.lang = state.lang;
 }
 
@@ -259,7 +262,7 @@ function renderResults() {
     const app=result.appellation;
     const matches=result.matches;
     const type = match => `<span class="result-match">${button(shortWine(match.wine)+(match.designation?` · ${name(match.designation)} (${[t('designation'),match.designation.qualification].filter(Boolean).join('・')})`:''),'open-match',`data-kind="${match.designation?'designation':'appellation'}" data-id="${escape(match.designation?.id || app.id)}" data-wine="${escape(match.wine.id)}"`,'type-link')}</span>`;
-    return `<article class="result-card" id="result-${escape(app.id)}"><h2>${button(name(app),'open-match',`data-kind="appellation" data-id="${escape(app.id)}"`,'result-title')}</h2>${original(app)!==name(app)?`<p class="original">${escape(original(app))}</p>`:''}<p class="meta-line">${escape([regionNames(app),app.gi,...(app.traditionalTerms||[]),app.level].filter(Boolean).join(' · '))}</p>${filtered?`<p class="search-reason">${escape(reason)}</p>`:''}<p class="meta-line">${ja?filtered?'条件に合うタイプ':'ワインのタイプ':filtered?'Matching types':'Wine types'}：${matches.length}</p><div class="result-types">${matches.slice(0,3).map(type).join('<span class="type-separator" aria-hidden="true"> | </span>')}</div>${matches.length>3?`<details id="matches-${escape(app.id)}" class="more-types"><summary><span class="when-closed">${ja?`残り${matches.length-3}タイプを表示`:`Show ${matches.length-3} more types`}</span><span class="when-open">${ja?'追加したタイプを閉じる':'Close additional types'}</span></summary><div class="result-types">${matches.slice(3).map(type).join('<span class="type-separator" aria-hidden="true"> | </span>')}</div></details>`:''}${applicabilityHTML(matches.map(m=>m.wine),app.id)}${button(ja?'詳細を見る':'View details','open-match',`data-kind="appellation" data-id="${escape(app.id)}"`,'quiet')}</article>`;
+    return `<article class="result-card" id="result-${escape(app.id)}"><h2>${button(name(app),'open-match',`data-kind="appellation" data-id="${escape(app.id)}"`,'result-title')}</h2>${original(app)!==name(app)?`<p class="original">${escape(original(app))}</p>`:''}<p class="meta-line">${escape([regionNames(app),app.gi,...(app.traditionalTerms||[]),app.level].filter(Boolean).join(' · '))}</p>${filtered?`<p class="search-reason">${escape(reason)}</p>`:''}<p class="meta-line type-count">${ja?filtered?'条件に合うタイプ':'ワインのタイプ':filtered?'Matching types':'Wine types'}：${matches.length}</p><div class="result-types">${matches.slice(0,3).map(type).join('<span class="type-separator" aria-hidden="true"> | </span>')}</div>${matches.length>3?`<details id="matches-${escape(app.id)}" class="more-types"><summary><span class="when-closed">${ja?`残り${matches.length-3}タイプを表示`:`Show ${matches.length-3} more types`}</span><span class="when-open">${ja?'追加したタイプを閉じる':'Close additional types'}</span></summary><div class="result-types">${matches.slice(3).map(type).join('<span class="type-separator" aria-hidden="true"> | </span>')}</div></details>`:''}${applicabilityHTML(matches.map(m=>m.wine),app.id)}${button(ja?'詳細を見る':'View details','open-match',`data-kind="appellation" data-id="${escape(app.id)}"`,'quiet')}</article>`;
   }).join('') || `<p class="empty">${escape(ja?`現在収録している${scope.length}呼称では、条件に合うタイプが見つかりませんでした。この地域全体で使用できないという意味ではありません。`:t('noResults'))}</p>${state.filters.length===1?button(ja?`${name(find(state.filters[0].kind,state.filters[0].id))}の条件を外す`:'Remove this condition','remove-filter','data-index="0"','quiet'):''}`}${['region','country'].includes(state.route)?`<p>${button(ja?'他の地域も探す':'Search other regions','widen-scope','','quiet')}<small>${ja?'追加した条件を維持して、検索範囲を全地域に広げます。':'Keep added conditions and search all regions.'}</small></p>`:''}`;
 }
 
@@ -624,7 +627,13 @@ document.addEventListener('click', async event => {
   const target = event.target.closest('[data-action]');
   if (!target || !data) return;
   const { action, id, kind } = target.dataset;
-  if (action === 'back') history.back();
+  if (action === 'brand-home') {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    event.preventDefault();
+    if (state.route === 'home' && !state.contextualSearch && !state.returnTo) { window.scrollTo(0,0); $('main').focus({preventScroll:true}); }
+    else navigate('home', null, {returnTo:null});
+  }
+  else if (action === 'back') history.back();
   else if (action === 'home') navigate('home', null, {returnTo:null});
   else if (action === 'navigate' || action === 'candidate-navigate') {
     if (action === 'candidate-navigate') { replace({query:''},false); if ($('query')) $('query').value=''; candidatesHidden=true; }
