@@ -86,3 +86,21 @@ main{padding-top:.4rem}p{margin:.25rem 0 .45rem}h2{margin:.75rem 0 .35rem}
 .wine{padding:.55rem 0 .65rem}.rule{margin:.3rem 0}.regulation-heading{margin:.35rem 0}
 .about>p{margin:.25rem 0 .5rem}.source{padding:.4rem 0}.notice{padding:.5rem .65rem}
 .type-links{display:flex;flex-wrap:wrap;gap:.25rem}.type-links a{padding:.2rem .5rem;line-height:1.4;min-height:44px}
+
+/* Enlarged text must not turn short-view navigation into a wall of controls. */
+.sheet-head>strong{min-width:0;overflow-wrap:anywhere}
+.sheet-head>[data-action=close-overlay]{flex:none;white-space:nowrap}
+@media(max-height:500px){
+  header{gap:.15rem .25rem;padding-block:.2rem}
+  header .lang button{padding:.1rem .25rem;line-height:1.2;min-height:44px}
+  header:has(.header-return){display:grid;grid-template-columns:minmax(0,1fr) auto}
+  header:has(.header-return) .brand{grid-column:1/-1}
+  header:has(.header-return) .lang{grid-column:2;grid-row:2;align-self:start}
+  header:has(.header-return) .header-return{grid-column:1;grid-row:2;line-height:1.2;padding:.1rem .2rem}
+  dialog{max-height:calc(100dvh - .5rem)}
+  .sheet-head{position:static;padding:.25rem .5rem;gap:.3rem}
+  .sheet-head>[data-action=close-overlay]{padding:.15rem .3rem;line-height:1.2}
+  .sheet-body{padding:.35rem .5rem .65rem}
+  .menu-options{gap:.3rem}
+  .menu-options button{padding:.2rem .4rem;line-height:1.2}
+}
