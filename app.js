@@ -1,3 +1,4 @@
+import { createPublicDataLoader } from './lib/public-data-loader.mjs';
 import { countryEntries, browseRegionGroups } from './lib/browse-geography.mjs';
 import { regulationExplanation } from './lib/regulation-explanations.mjs';
 import { fieldIssues, alcoholDisplayProof, alcoholPresentation, alcoholUnmappedClauses, ageingStartExplanation } from './lib/field-integrity.mjs';
@@ -36,10 +37,13 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, character => ({ 
 const button = (text, action, attributes = '', className = '') => `<button type="button" data-action="${action}" class="${className}" ${attributes}>${escape(text)}</button>`;
 const t = key => words[state.lang][key] ?? key;
 let data;
+const publicLoader = createPublicDataLoader();
+let routeGeneration = 0, routeLoading = false;
 let candidates = [];
 let state = history.state?.ae ? history.state.state : readURL();
 let preferredLanguage = state.lang;
 let candidateLimit = 12;
+let copyGeneration = 0;
 let candidatesHidden = false;
 let menuFocusIndex = null;
 let depth = history.state?.ae ? history.state.depth : 0;
@@ -75,6 +79,7 @@ function urlFor(next) {
 }
 
 function capture() {
+  if (routeLoading) return snapshot || { scroll: 0, open: [] };
   const input = $('query');
   return { scroll: window.scrollY, open: [...document.querySelectorAll('main details[open]')].map(item => item.id).filter(Boolean), focus: input === document.activeElement, selection: input ? [input.selectionStart, input.selectionEnd] : null, grapeQueries: [...document.querySelectorAll('[data-grape-search]')].map(input => [input.id, input.value]) };
 }
@@ -586,6 +591,24 @@ function aboutHTML() {
 
 function render() {
   if (!data) return;
+  const generation = ++routeGeneration;
+  if (!publicLoader.isReady(state.route, state.id)) {
+    routeLoading = true;
+    cancelAnimationFrame(restoreFrame);
+    renderHeader();
+    $('main').innerHTML = `<p class="notice" role="status" aria-live="polite" aria-busy="true">${state.lang === 'ja' ? 'このページの公開データを読み込んでいます…' : 'Loading published data for this page…'}</p>`;
+    publicLoader.ensureRoute(state.route, state.id).then(() => {
+      if (generation !== routeGeneration) return;
+      routeLoading = false;
+      render();
+    }).catch(() => {
+      if (generation !== routeGeneration) return;
+      $('main').innerHTML = `<p class="notice" role="alert">${escape(t('loadFailed'))} ${state.lang === 'ja' ? '未取得のデータはオフラインでは表示できません。条件は保持しています。' : 'Data not yet downloaded is unavailable offline. Your conditions are preserved.'}</p><button type="button" id="retry-route">${escape(t('retry'))}</button>`;
+      $('retry-route').addEventListener('click', render);
+    });
+    return;
+  }
+  routeLoading = false;
   state.filters = state.filters.filter(f => !(f.kind === state.route && f.id === state.id && f.mode === 'include'));
   renderHeader();
   $('main').innerHTML = state.route === 'home' ? homeHTML() : ['country', 'region'].includes(state.route) ? regionHTML() : ['appellation', 'designation'].includes(state.route) ? detailsHTML() : state.route === 'recent' ? recentHTML() : aboutHTML();
@@ -655,8 +678,9 @@ document.addEventListener('click', async event => {
   else if (action === 'widen-scope') navigate('home',null,{query:'',originScope:null});
   else if (action === 'copy-search') {
     const url = new URL(urlFor({...state,query:''}),location.href).href;
-    try { await navigator.clipboard.writeText(url); $('copy-feedback').textContent = state.lang==='ja'?'リンクをコピーしました':'Link copied'; }
-    catch { $('copy-feedback').innerHTML = `<label>${state.lang==='ja'?'コピーできませんでした。以下のリンクを選択してコピーしてください。':'Copy failed. Select and copy this link.'}<input readonly value="${escape(url)}"></label>`; $('copy-feedback').querySelector('input').select(); }
+    const feedback=$('copy-feedback'),generation=++copyGeneration;
+    try { await navigator.clipboard.writeText(url); if(generation===copyGeneration && $('copy-feedback')===feedback && feedback) feedback.textContent = state.lang==='ja'?'リンクをコピーしました':'Link copied'; }
+    catch { if(generation===copyGeneration && $('copy-feedback')===feedback && feedback) { feedback.innerHTML = `<label>${state.lang==='ja'?'コピーできませんでした。以下のリンクを選択してコピーしてください。':'Copy failed. Select and copy this link.'}<input readonly value="${escape(url)}"></label>`; feedback.querySelector('input').select(); } }
   }
   else if (action === 'language') { preferredLanguage = target.dataset.language; replace({ lang: preferredLanguage }); document.querySelector(`[data-action=language][data-language=${preferredLanguage}]`)?.focus({preventScroll:true}); }
   else if (action === 'clear-recent') { try { localStorage.removeItem('ae-recent-v1'); render(); $('main').focus(); toast(state.lang === 'ja' ? '閲覧履歴を消去しました。検索条件は保持しています。' : 'History cleared. Search filters are retained.'); } catch { toast(state.lang === 'ja' ? 'この端末では履歴を消去できませんでした。' : 'Could not clear local history.'); } }
@@ -749,9 +773,7 @@ window.addEventListener('pagehide', saveEntry);
 
 async function start() {
   try {
-    const response = await fetch('./data.json', { cache: 'no-cache', signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    data = await response.json();
+    data = await publicLoader.start();
     if (data.schemaVersion !== 1 || !Array.isArray(data.appellations)) throw new Error('Unsupported data schema');
     candidates = buildCandidates(data, { facets: true });
     render();
@@ -759,7 +781,7 @@ async function start() {
   } catch (error) {
     renderHeader();
     $('main').innerHTML = `<h1>${escape(t('loadFailed'))}</h1><p>${state.lang === 'ja' ? '通信またはデータの読み込みに失敗しました。再試行してください。' : 'The connection or data could not be read. Please retry.'}</p>${button(t('retry'), 'reload')}`;
-    document.querySelector('[data-action=reload]').addEventListener('click', () => location.reload());
+    document.querySelector('[data-action=reload]').addEventListener('click', start);
   }
 }
 
