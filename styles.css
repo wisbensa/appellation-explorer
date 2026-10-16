@@ -106,3 +106,10 @@ main{padding-top:.4rem}p{margin:.25rem 0 .45rem}h2{margin:.75rem 0 .35rem}
 .country-grid,.browse-region-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:.4rem .8rem}
 .browse-region-group{margin:.9rem 0 1.1rem}.browse-region-group h3{font-size:1rem;color:var(--muted);margin:.4rem 0;border-bottom:1px solid var(--line);padding-bottom:.35rem}
 .country-grid .row,.browse-region-list .row{min-width:0;overflow-wrap:anywhere;padding:.65rem 1.5rem .65rem .65rem}.country-grid .row-title,.browse-region-list .row-title{font-size:1rem}
+
+/* Classification is a non-interactive heading, never a geographic parent. */
+.appellation-group{margin:1.1rem 0 1.4rem}
+.appellation-group-heading{display:flex;flex-wrap:wrap;align-items:baseline;gap:.4rem;font-size:1.125rem;border-bottom:1px solid var(--line);padding-bottom:.35rem;margin:.5rem 0}
+.appellation-group-count{font-size:.875rem;font-weight:400;color:var(--muted)}
+.result-card>.designation-context{display:block;font-size:.875rem;color:var(--muted);margin:.3rem 0}
+.transition-successors{margin:1rem 0}.identity-transition .row{overflow-wrap:anywhere}
