@@ -1,3 +1,6 @@
+import {regulatoryApplicabilityLabel,regulatoryApplicabilityEvidence,regulatoryHistoricalSummaries} from './lib/regulatory-applicability.mjs';
+import {conditionalUseWitnesses} from './lib/conditional-use.mjs';
+import {sourceDomainPresentation} from './lib/source-domain-presentation.mjs';
 import { regionalAppellationGroups, transitionForAppellation } from './lib/regional-list.mjs';
 import { createPublicDataLoader } from './lib/public-data-loader.mjs';
 import { countryEntries, browseRegionGroups } from './lib/browse-geography.mjs';
@@ -286,6 +289,17 @@ function updateTypeSeparators() {
 }
 window.addEventListener('resize',updateTypeSeparators);
 
+function resultConditionsHTML(matches) {
+  return matches.map(match => {
+    // National applicability is already shown once on the parent card. Keep
+    // each conditional recipe attached to its actual matching wine witness.
+    const conditions=(match.conditions||[]).filter(condition=>condition.kind!=='national_regulatory_applicability');
+    if(!conditions.length)return '';
+    const label=shortWine(match.wine)+(match.designation?` · ${name(match.designation)}`:'');
+    return `<p class="conditional-use-notice"><strong>${escape(label)}</strong> · ${state.lang==='ja'?'適用条件：':'Applies when: '}${conditions.map(condition=>escape(vineyardConditionText(condition))).join(' ')}</p>`;
+  }).join('');
+}
+
 function renderResults() {
   updateTypeSeparators();
   if (!$('results')) return;
@@ -307,7 +321,7 @@ function renderResults() {
     const app=result.appellation;
     const matches=result.matches;
     const type = match => `<span class="result-match">${button(shortWine(match.wine)+(match.designation?` · ${name(match.designation)} (${[t('designation'),match.designation.qualification].filter(Boolean).join('・')})`:''),'open-match',`data-kind="${match.designation?'designation':'appellation'}" data-id="${escape(match.designation?.id || app.id)}" data-wine="${escape(match.wine.id)}"`,'type-link')}</span>`;
-    return `<article class="result-card" id="result-${escape(app.id)}"><h2>${button(name(app),'open-match',`data-kind="appellation" data-id="${escape(app.id)}"`,'result-title')}</h2>${original(app)!==name(app)?`<p class="original">${escape(original(app))}</p>`:''}<p class="meta-line">${escape([regionNames(app),app.gi,...(app.traditionalTerms||[]),app.level].filter(Boolean).join(' · '))}</p>${premierCruHTML(app,groupId)}${filtered?`<p class="search-reason">${escape(reason)}</p>`:''}<p class="meta-line type-count">${ja?filtered?'条件に合うタイプ':'ワインのタイプ':filtered?'Matching types':'Wine types'}：${matches.length}</p><div class="result-types">${matches.slice(0,3).map(type).join('<span class="type-separator" aria-hidden="true"> | </span>')}</div>${matches.length>3?`<details id="matches-${escape(app.id)}" class="more-types"><summary><span class="when-closed">${ja?`残り${matches.length-3}タイプを表示`:`Show ${matches.length-3} more types`}</span><span class="when-open">${ja?'追加したタイプを閉じる':'Close additional types'}</span></summary><div class="result-types">${matches.slice(3).map(type).join('<span class="type-separator" aria-hidden="true"> | </span>')}</div></details>`:''}${applicabilityHTML(matches.map(m=>m.wine),app.id)}${button(ja?'詳細を見る':'View details','open-match',`data-kind="appellation" data-id="${escape(app.id)}"`,'quiet')}</article>`;
+    return `<article class="result-card" id="result-${escape(app.id)}"><h2>${button(name(app),'open-match',`data-kind="appellation" data-id="${escape(app.id)}"`,'result-title')}</h2>${original(app)!==name(app)?`<p class="original">${escape(original(app))}</p>`:''}<p class="meta-line">${escape([regionNames(app),app.gi,...(app.traditionalTerms||[]),app.level].filter(Boolean).join(' · '))}</p>${app.publication?`<p class="notice">${ja?'未確認の項目があります':'Contains unverified information'}</p>`:''}${regulatoryApplicabilityHTML(app)}${premierCruHTML(app,groupId)}${filtered?`<p class="search-reason">${escape(reason)}</p>`:''}<p class="meta-line type-count">${ja?filtered?'条件に合うタイプ':'ワインのタイプ':filtered?'Matching types':'Wine types'}：${app.publication?.scope==='regulations'?(ja?'未確認':'unverified'):matches.length}</p><div class="result-types">${matches.slice(0,3).map(type).join('<span class="type-separator" aria-hidden="true"> | </span>')}</div>${resultConditionsHTML(matches.slice(0,3))}${matches.length>3?`<details id="matches-${escape(app.id)}" class="more-types"><summary><span class="when-closed">${ja?`残り${matches.length-3}タイプを表示`:`Show ${matches.length-3} more types`}</span><span class="when-open">${ja?'追加したタイプを閉じる':'Close additional types'}</span></summary><div class="result-types">${matches.slice(3).map(type).join('<span class="type-separator" aria-hidden="true"> | </span>')}</div>${resultConditionsHTML(matches.slice(3))}</details>`:''}${applicabilityHTML(matches.map(m=>m.wine),app.id)}${button(ja?'詳細を見る':'View details','open-match',`data-kind="appellation" data-id="${escape(app.id)}"`,'quiet')}</article>`;
   }) || `<p class="empty">${escape(ja?`現在収録している${scope.length}呼称では、条件に合うタイプが見つかりませんでした。この地域全体で使用できないという意味ではありません。`:t('noResults'))}</p>${state.filters.length===1?button(ja?`${name(find(state.filters[0].kind,state.filters[0].id))}の条件を外す`:'Remove this condition','remove-filter','data-index="0"','quiet'):''}`}${['region','country'].includes(state.route)?`<p>${button(ja?'他の地域も探す':'Search other regions','widen-scope','','quiet')}<small>${ja?'追加した条件を維持して、検索範囲を全地域に広げます。':'Keep added conditions and search all regions.'}</small></p>`:''}`;
   if (state.route === 'country' && !filtered && $('child-regions')) {
     $('results').innerHTML = `<details id="country-appellations"><summary>${escape(ja ? `この国の収録呼称を一覧で見る（${results.length}件）` : `View included appellations in this country (${results.length})`)}</summary>${$('results').innerHTML}</details>`;
@@ -369,13 +383,42 @@ function requiredGrapes(rule) {
   return requiredGrapeCache.get(key);
 }
 
+function vineyardConditionText(condition){
+ const ja=state.lang==='ja';
+ if(condition.kind==='ordered_two_variety_material')return ja?`同系色の原料ワインから造る2品種構成：${condition.method==='spumante'?'スプマンテ':condition.method==='frizzante'?'フリッツァンテ':'非発泡'}。${condition.orderedVarieties.join(' → ')}の順に表示し、第1品種を多く使用${condition.vinification?.length?`。${condition.vinification.map(v=>`${v.variety}は${v.color==='rosato'?'ロゼ':'白'}醸造`).join('・')}`:''}`:`Two-variety wine-material composition, analogous color: ${condition.method} wine; label ${condition.orderedVarieties.join(' then ')}, first variety predominant${condition.vinification?.length?`; ${condition.vinification.map(v=>`${v.variety} vinified ${v.color==='rosato'?'rosé':'white'}`).join('; ')}`:''}`;
+ if(condition.kind==='authorized_varietal_label')return ja?`表示名「${condition.label}」：${name({name:{original:condition.namedVarietal}})}の品種規定に従うスプマンテに限る`:`Label “${condition.label}”: sparkling wine under the ${condition.namedVarietal} varietal rules`;
+ if(condition.kind==='general_rule')return (ja?'通常の規定':'General rule')+(condition.requirements?.length?(ja?'：黒ブドウ・非芳香性の果実が条件':': black, non-aromatic fruit required'):'');
+ return `${ja?'条件付きの使用：':'Conditional use: '} ${condition.date}${ja?'までに登録された畑で、':' or earlier vineyard registration; '}${condition.conformsTo?.decreeDate}${ja?'の規定第2条に適合。':' rules, Article 2, must be met.'}${condition.adaptationDeadline?` ${ja?'適合期限：':'Adaptation deadline: '}${condition.adaptationDeadline}.`:''}`;
+}
+
 function grapeHTML(rule, prefix) {
+  if(rule?.state==='unverified'){
+    deferReference('composition',prefix,evidenceHTML(rule.evidence,`${prefix}-unverified`));
+    return `<p class="notice">${state.lang==='ja'?'品種規則：未確認。参照別紙・品種の対応を確定できていないため、品種や割合を表示せず、品種検索の判定にも使いません。使用不可という意味ではありません。':'Grape rules unverified: referenced annex or variety correspondence is unresolved. No varieties or ratios are asserted or used in grape search; this does not mean prohibited use.'}</p>`;
+  }
   if (!rule) return `<p class="muted">${escape(t('unverified'))}</p>`;
+  if(rule.conditionalUse?.profile==='it-ordered-two-variety-v1'){
+    const ja=state.lang==='ja',branches=conditionalUseWitnesses(rule)||[],branch=branches[0];
+    if(!branch)return `<p class="muted">${escape(t('unverified'))}</p>`;
+    const minimum=branch.rule.constraints[1].min;
+    deferReference('composition',`${prefix}-ordered-pair`,evidenceHTML(rule.evidence,`${prefix}-ordered-pair`));
+    const text=ja?`同系色の果醪またはワインを用い、表示した2品種だけで構成します。先に表示する品種が多く、少ない品種も${minimum}%以上が必要です。`:`Musts or wines of analogous color, entirely from the two named varieties. The first named variety predominates; the minority variety must contribute at least ${minimum}%.`;
+    const processing=[...new Map(branches.flatMap(b=>b.condition.vinification||[]).map(v=>[`${v.variety}|${v.color}`,v])).values()].map(v=>ja?`${v.variety}は${v.color==='rosato'?'ロゼ':'白'}醸造が条件`:`${v.variety} requires ${v.color==='rosato'?'rosé':'white'} vinification`).join(ja?'。':'; ');
+    const witness=ja?'検索では、原文が認めるワイン原料の構成で成立を確認します。品種・醸造・表示順の条件は一致結果に表示します。':'Search uses a proved wine-material composition. Matching results retain the variety, vinification and label-order conditions.';
+    return `${grapeConclusion(rule)}<section class="ordered-pair-rule"><p>${escape(text)}</p>${processing?`<p>${escape(processing)}</p>`:''}<p>${rule.grapeIds.map(grapeLink).join(' · ')}</p><details class="grape-guide"><summary>${escape(ja?'品種の見方':'Understanding grape rules')}</summary><p>${escape(witness)}</p><p>${escape(ja?'ここにない品種や成立未確認の組合せを、使用禁止とは断定しません。':'Unlisted varieties or unproved combinations are not treated as prohibited.')}</p></details></section>`;
+  }
+  if(rule.conditionalUse){
+    deferReference('composition', `${prefix}-conditional`, evidenceHTML(rule.evidence,`${prefix}-conditional`));
+    return `${grapeConclusion(rule)}<section class="conditional-vineyard"><p>${escape(state.lang==='ja'?`${rule.conditionalUse.referenceDate}時点の適用条件`:`Applicability as of ${rule.conditionalUse.referenceDate}`)}</p>${rule.conditionalUse.branches.map((branch,index)=>`<section><h4>${escape(vineyardConditionText(branch.condition))}${branch.condition.adaptationDeadline&&rule.conditionalUse.referenceDate>=branch.condition.adaptationDeadline?escape(rule.conditionalUse.referenceDate===branch.condition.adaptationDeadline?(state.lang==='ja'?'（期限当日の適用は未確認）':' (deadline-day applicability unverified)'):(state.lang==='ja'?'（この基準日では適用終了）':' (inactive at this reference date)')):''}</h4>${grapeHTML(branch.rule,`${prefix}-branch-${index}`)}</section>`).join('')}</section>`;
+  }
   const ids = [...new Set(rule.grapeIds || [])].sort((a,b)=>name(find('grape',a)).localeCompare(name(find('grape',b)),state.lang));
   const ja = state.lang === 'ja';
+  const domainPresentation=sourceDomainPresentation(rule,state.lang);
+  const domainDisplay=domainPresentation.display;
+  const domainNotice=domainPresentation.main;
   const wording = (rule.evidence?.[0]?.quote || rule.original || '').replace(/\s+/g, ' ');
   const region = wording.match(/idonei alla coltivazione nella regione ([\p{L}]+)[.;]/u)?.[1];
-  const regional = ids.length > 6 && region && !rule.alternatives && rule.constraints?.length === 1 && rule.constraints[0].min === 100 && rule.constraints[0].max === 100;
+  const regional = !domainDisplay && ids.length > 6 && region && !rule.alternatives && rule.constraints?.length === 1 && rule.constraints[0].min === 100 && rule.constraints[0].max === 100;
   const oneOrMore = regional && /da uno o più vitigni/i.test(wording);
   const regionName = region ? name({ name: { original: region } }) : '';
   const scoped = rule.scope === 'senza indicazione del nome dei vitigni';
@@ -384,7 +427,7 @@ function grapeHTML(rule, prefix) {
     ? `${regionName}州で栽培が認められた品種${oneOrMore ? 'から1品種または複数品種を使用できます' : 'で構成される畑から収穫したブドウを使用します'}。実際のボトルの配合を示すものではありません。`
     : `Permitted varieties from ${regionName} supply these wines. This is an authorised list, not a list of representative grapes or a bottle recipe.`
     : '';
-  const list = ids.length <= 6 ? `<p>${ids.map(grapeLink).join(' · ')}</p>` : `<div class="grape-list"><label>${escape(ja?`規定に列挙された${ids.length}品種から探す`:`Search ${ids.length} listed grapes`)}<input id="grape-query-${escape(prefix)}" type="search" data-grape-search autocomplete="off"></label><div class="grape-search-results" aria-live="polite"></div><details id="grapes-${escape(prefix)}"><summary>${escape(ja?`全${ids.length}品種の一覧を開く`:`Open all ${ids.length} grapes`)}</summary><p class="meta-line">${escape(ja?'日本語は参考の読みです。原語のみの品種は読み未確認です。':'Japanese readings are editorial aids; untranslated names have no verified reading.')}</p><div class="grape-buttons">${ids.map(grapeLink).join('')}</div></details></div>`;
+  const list = ids.length <= 6 ? `<p>${ids.map(grapeLink).join(' · ')}</p>` : `<div class="grape-list"><label>${escape(domainDisplay?(ja?'確認済み品種から探す':'Search proved varieties'):ja?`規定に列挙された${ids.length}品種から探す`:`Search ${ids.length} listed grapes`)}<input id="grape-query-${escape(prefix)}" type="search" data-grape-search autocomplete="off"></label><div class="grape-search-results" aria-live="polite"></div><details id="grapes-${escape(prefix)}"><summary>${escape(domainDisplay?(ja?'確認済み品種を見る':'View proved varieties'):ja?`全${ids.length}品種の一覧を開く`:`Open all ${ids.length} grapes`)}</summary><p class="meta-line">${escape(ja?'日本語は参考の読みです。原語のみの品種は読み未確認です。':'Japanese readings are editorial aids; untranslated names have no verified reading.')}</p><div class="grape-buttons">${ids.map(grapeLink).join('')}</div></details></div>`;
   // Show only proved usage duties, never a positive planting minimum alone.
   const required = requiredGrapes(rule);
   const soleSource = ids.length === 1 && grapeDutyProof(rule, ids[0])?.kind === 'sole-source';
@@ -435,7 +478,7 @@ function grapeHTML(rule, prefix) {
   const covered = new Set((rule.alternatives ?? [rule]).flatMap(r=>(r.constraints ?? []).flatMap(c=>c.grapeIds)));
   const composition = regional ? '' : soleSource ? `<p class="grape-composition">${grapeLink(ids[0])}：100%</p>` : `<div class="grape-composition">${constraints}</div>`;
   const remaining = ids.filter(id=>!covered.has(id));
-  return `${grapeConclusion(rule)}${summary ? `<p>${escape(summary)}</p>` : ''}${composition}${duties}${scope}${ids.length > 6 ? list : remaining.length ? `<p>${remaining.map(grapeLink).join(' · ')}</p>` : ''}<details class="grape-guide" id="ratios-${escape(prefix)}"><summary>${escape(ja ? '品種の見方' : 'Understanding grape rules')}</summary>${uncertain}${soleSource ? `<p>${escape(ja ? '100%は、原料の由来がこの1品種に限られる規定の要約です。畑の割合を原料重量やワイン容量へ換算した値ではありません。' : '100% summarises the exclusive permitted fruit source, not a conversion of vineyard percentages to grape weight or wine volume.')}</p>` : ''}<p>${escape(explanation)}</p>${regional ? constraints : ''}</details>`;
+  return `${grapeConclusion(rule)}${domainNotice}${summary ? `<p>${escape(summary)}</p>` : ''}${composition}${duties}${scope}${ids.length > 6 ? list : remaining.length ? `<p>${remaining.map(grapeLink).join(' · ')}</p>` : ''}<details class="grape-guide" id="ratios-${escape(prefix)}"><summary>${escape(ja ? '品種の見方' : 'Understanding grape rules')}</summary>${uncertain}${domainPresentation.guide}${soleSource ? `<p>${escape(ja ? '100%は、原料の由来がこの1品種に限られる規定の要約です。畑の割合を原料重量やワイン容量へ換算した値ではありません。' : '100% summarises the exclusive permitted fruit source, not a conversion of vineyard percentages to grape weight or wine volume.')}</p>` : ''}<p>${escape(explanation)}</p>${regional ? constraints : ''}</details>`;
 }
 
 function valueText(value) {
@@ -509,7 +552,8 @@ function grapeConclusion(rule) {
   if (!selected.length) return '';
   if (retiredFilters().length) return `<p class="notice">${escape(retiredMessage())}</p>`;
   const result = evaluateWine(data, {}, {grapeRule:rule}, selected);
-  return `<p class="grape-conclusion">${escape(selected.map(filterLabel).join(' ／ '))}：${escape(state.lang==='ja' ? result.status==='match'?'この品種規定では同時に成立します。':result.status==='unknown'?'規定情報が不足して判定できません。':'この品種規定では同時に成立しません。' : result.status==='match'?'Possible together under these grape rules.':result.status==='unknown'?'Insufficient information.':'Not possible together under these grape rules.')}</p>`;
+  const conditional=result.conditions?.length?`<p class="conditional-use-notice">${result.conditions.map(condition=>escape(vineyardConditionText(condition))).join(' ')}</p>`:'';
+  return `${conditional}<p class="grape-conclusion">${escape(selected.map(filterLabel).join(' ／ '))}：${escape(state.lang==='ja' ? result.status==='match'?(result.conditions?.length?'上記の適用条件を満たす場合に同時に成立します。':'この品種規定では同時に成立します。'):result.status==='unknown'?'規定情報が不足して判定できません。':'この品種規定では同時に成立しません。' : result.status==='match'?(result.conditions?.length?'Possible together when the applicability conditions above are met.':'Possible together under these grape rules.'):result.status==='unknown'?'Insufficient information.':'Not possible together under these grape rules.')}</p>`;
 }
 // Route only explicit saved production statements; never infer mixed planting
 // or co-fermentation from a reference to vineyards or from permitted varieties.
@@ -523,7 +567,7 @@ function grapeProductionConditions(wine) {
 }
 
 function wineHTML(wine, matched, common = false, sharedFields = [], hasIndex = true) {
-  return withReferenceContext(`${t('type')}: ${name(wine)}`, () => `<article class="wine ${matched ? 'matched' : ''}" id="wine-${escape(wine.id)}" tabindex="-1" data-wine-id="${escape(wine.id)}">${matched ? `<span class="matched-label">${escape(t('matched'))}</span>` : ''}<h2>${escape(shortWine(wine))}</h2><p class="meta-line">${escape(original(wine))}</p>${common ? `<p><a href="#common-grapes" data-action="common-jump">${escape(t('commonReference'))}</a></p>` : `<div class="rule"><h3 class="regulation-heading">${escape(t('composition'))}</h3>${grapeHTML(wine.grapeRule,wine.id)}</div>`}${grapeProductionConditions(wine)}${applicabilityHTML([wine],wine.id)}${optionalHTML(wine.sensory,'sensory',wine.id)}${optionalHTML(wine.ageing,'ageing',wine.id)}${optionalHTML(wine.alcohol,'alcohol',wine.id)}${wine.alcohol?.values?.length ? alcoholGuideHTML(wine.id) : ''}<details id="long-${escape(wine.id)}"><summary>${escape(t('allRules'))}</summary>${['varietalLabelling','production','area'].filter(k=>!sharedFields.includes(k)&&(k!=='varietalLabelling'||wine[k])).map(k=>optionalHTML(wine[k],k,wine.id)).join('')}${sharedFields.length?'<a href="#shared-regulations" data-action="section-jump" data-target="shared-regulations">'+(state.lang==='ja'?'共通の区域・栽培・ラベル条件':'Shared conditions')+'</a>':''}${deferReference('type',wine.id,evidenceHTML(wine.evidence,`${wine.id}-identity`))}</details>${hasIndex ? `<a class="meta-line" href="#type-index" data-action="section-jump" data-target="type-index">${state.lang==='ja'?'タイプ目次へ':'Back to wine types'}</a>` : ''}</article>`);
+  return withReferenceContext(`${t('type')}: ${name(wine)}`, () => `<article class="wine ${matched ? 'matched' : ''}" id="wine-${escape(wine.id)}" tabindex="-1" data-wine-id="${escape(wine.id)}">${matched ? `<span class="matched-label">${escape(t('matched'))}</span>` : ''}<h2>${escape(shortWine(wine))}</h2>${wine.typeClassification?`<p class="meta-line">${state.lang==='ja'?'原文の色表現から赤・ロゼ等への分類は未確定':'The source color description does not establish a normalized color category.'}</p>`:''}<p class="meta-line">${escape(original(wine))}</p>${common ? `<p><a href="#common-grapes" data-action="common-jump">${escape(t('commonReference'))}</a></p>` : `<div class="rule"><h3 class="regulation-heading">${escape(t('composition'))}</h3>${grapeHTML(wine.grapeRule,wine.id)}</div>`}${grapeProductionConditions(wine)}${applicabilityHTML([wine],wine.id)}${optionalHTML(wine.sensory,'sensory',wine.id)}${optionalHTML(wine.ageing,'ageing',wine.id)}${optionalHTML(wine.alcohol,'alcohol',wine.id)}${wine.alcohol?.values?.length ? alcoholGuideHTML(wine.id) : ''}<details id="long-${escape(wine.id)}"><summary>${escape(t('allRules'))}</summary>${['varietalLabelling','production','area'].filter(k=>!sharedFields.includes(k)&&(k!=='varietalLabelling'||wine[k])).map(k=>optionalHTML(wine[k],k,wine.id)).join('')}${sharedFields.length?'<a href="#shared-regulations" data-action="section-jump" data-target="shared-regulations">'+(state.lang==='ja'?'共通の区域・栽培・ラベル条件':'Shared conditions')+'</a>':''}${deferReference('type',wine.id,evidenceHTML([...(wine.evidence||[]),...(wine.typeClassification?.evidence||[])],`${wine.id}-identity`))}</details>${hasIndex ? `<a class="meta-line" href="#type-index" data-action="section-jump" data-target="type-index">${state.lang==='ja'?'タイプ目次へ':'Back to wine types'}</a>` : ''}</article>`);
 }
 
 function alcoholGuideHTML(wineId) {
@@ -573,6 +617,17 @@ function conditionalAmendmentsHTML(entity) {
   }).join('')}</section>`;
 }
 
+function regulatoryApplicabilityHTML(app, references=false) {
+  const label=regulatoryApplicabilityLabel(app,state.lang);if(!label)return '';
+  return `<p class="meta-line regulatory-applicability">${escape(label)}</p>${references&&regulatoryHistoricalSummaries(app,state.lang).length?`<details><summary>${state.lang==='ja'?'過去の収穫年に関する別条件':'Separate historical-harvest conditions'}</summary>${regulatoryHistoricalSummaries(app,state.lang).map(text=>`<p>${escape(text)}</p>`).join('')}</details>`:''}${references?deferReference('regulatory-applicability',app.id,evidenceHTML(regulatoryApplicabilityEvidence(app),`${app.id}-regulatory-applicability`)):''}`;
+}
+
+function partialHTML(app){
+  if(!app.publication)return '';
+  const all=app.publication.scope==='regulations';
+  deferReference('unverified',app.id,evidenceHTML(app.publication.evidence,`${app.id}-unverified`));
+  return `<p class="notice partial-publication">${state.lang==='ja'?all?'規定は未確認です。公式資料の記載・版の対応に食い違いがあり、改正の適用範囲を確認できていません。確認済みの基本情報だけを掲載しています。品種・割合・タイプ・熟成等を現行の規定として表示せず、検索判定にも使いません。':'一部の品種規則が未確認です。該当タイプに明記しています。確認済み情報と区別し、未確認の品種対応は検索判定に使いません。':all?'Regulations unverified: official documents differ and amendment applicability is unresolved. Only verified identity information is shown; rules are withheld from display and search.':'Some grape rules are unverified. Affected types are marked; unverified correspondence is not used in search.'}</p>`;
+}
 function detailsHTML() {
   const transition = state.route === 'appellation' ? transitionForAppellation(data,state.id) : null;
   if (transition) return transitionHTML(transition);
@@ -589,8 +644,8 @@ function detailsHTML() {
   const sharedGrapes = common ? withReferenceContext(commonContext, () => `<section id="common-grapes" tabindex="-1"><h2 class="regulation-heading">${escape(t('commonRules'))} <small>${state.lang==='ja'?'（全タイプ共通）':'(all types)'}</small></h2>${grapeHTML(wines[0].grapeRule, entity.id)}</section>`) : '';
   const indexLinks = entries => `<div class="type-links">${entries.map(w=>`<a href="#wine-${escape(w.id)}" data-action="section-jump" data-target="wine-${escape(w.id)}">${escape(shortWine(w))}</a>`).join('')}</div>`;
   const matching = wines.filter(w=>state.matchIds.includes(w.id)), others = wines.filter(w=>!state.matchIds.includes(w.id));
-  const typeIndex = wines.length === 1 ? '' : `<nav id="type-index" tabindex="-1" aria-label="${state.lang==='ja'?'ワインのタイプ':'Wine types'}"><h2>${state.lang==='ja'?'タイプ別の規定':'Rules by wine type'}</h2>${state.filters.length?`<h3>${state.lang==='ja'?`今回の条件に合う${matching.length}タイプ`:`${matching.length} matching types`}</h3>${indexLinks(matching)}${others.length?`<details id="other-type-index"><summary>${state.lang==='ja'?`その他${others.length}タイプ`:`${others.length} other types`}</summary>${indexLinks(others)}</details>`:''}`:indexLinks(wines)}</nav><p class="meta-line">${state.lang==='ja'?'公式記述の日本語は参考訳・要約です。個々のボトルの味を保証するものではありません。':'Japanese descriptions are reference translations or summaries, not a guarantee of every bottle’s taste.'}</p>`;
-  return `<p class="eyebrow">${escape(t(state.route))}${entity.qualification ? ` · ${escape(entity.qualification)}` : ''}</p><h1>${escape(name(entity))}</h1>${original(entity) !== name(entity) ? `<p class="original">${escape(original(entity))}</p>` : ''}<p class="meta-line">${escape([name(find('country', parent?.countryId)), regionNames(parent ?? {}), state.route === 'appellation' ? parent?.gi : '', ...(state.route === 'appellation' ? parent?.traditionalTerms ?? [] : []), entity.level].filter(Boolean).join(' · '))}</p>${state.route === 'designation' && parent ? `<p>${escape(t('parent'))}: ${button(name(parent), 'navigate', `data-kind="appellation" data-id="${escape(parent.id)}"`, 'quiet')}</p>` : ''}<p class="notice">${escape(t('detailInfo'))}</p>${sharedGrapes}${typeIndex}<div class="wines">${wines.map((wine,index) => `${state.filters.length && (index===0 || state.matchIds.includes(wines[index-1].id)!==state.matchIds.includes(wine.id))?`<h2>${state.lang==='ja'?state.matchIds.includes(wine.id)?'今回の条件に合うタイプ':'その他のタイプ':state.matchIds.includes(wine.id)?'Matching types':'Other types'}</h2>`:''}${wineHTML(wine, state.matchIds.includes(wine.id), common, sharedFields, wines.length > 1)}`).join('')}</div>${sharedFields.length ? `<details id="shared-regulations" tabindex="-1"><summary>${state.lang==='ja'?'呼称全体の区域・栽培・ラベル条件':'Appellation-wide conditions'}</summary><p>${state.lang==='ja'?'タイプごとの適用条件も含む条文をまとめています。ここに書かれた条件がすべてのタイプへ一律に適用されるとは限りません。':'These shared paragraphs can contain conditions for specific wine types; not every condition applies to every type.'}</p>${withReferenceContext(commonContext, () => sharedFields.map(k=>optionalHTML(wines[0][k],k,entity.id)).join(''))}</details>` : ''}${conditionalAmendmentsHTML(entity)}${state.route === 'appellation' ? designationList(entity) : ''}${aboutLink(state.lang === 'ja' ? 'このアプリについて' : 'About this app')}${sourcesHTML(entity)}`;
+  const typeIndex = wines.length <= 1 ? '' : `<nav id="type-index" tabindex="-1" aria-label="${state.lang==='ja'?'ワインのタイプ':'Wine types'}"><h2>${state.lang==='ja'?'タイプ別の規定':'Rules by wine type'}</h2>${state.filters.length?`<h3>${state.lang==='ja'?`今回の条件に合う${matching.length}タイプ`:`${matching.length} matching types`}</h3>${indexLinks(matching)}${others.length?`<details id="other-type-index"><summary>${state.lang==='ja'?`その他${others.length}タイプ`:`${others.length} other types`}</summary>${indexLinks(others)}</details>`:''}`:indexLinks(wines)}</nav><p class="meta-line">${state.lang==='ja'?'公式記述の日本語は参考訳・要約です。個々のボトルの味を保証するものではありません。':'Japanese descriptions are reference translations or summaries, not a guarantee of every bottle’s taste.'}</p>`;
+  return `<p class="eyebrow">${escape(t(state.route))}${entity.qualification ? ` · ${escape(entity.qualification)}` : ''}</p><h1>${escape(name(entity))}</h1>${original(entity) !== name(entity) ? `<p class="original">${escape(original(entity))}</p>` : ''}<p class="meta-line">${escape([name(find('country', parent?.countryId)), regionNames(parent ?? {}), state.route === 'appellation' ? parent?.gi : '', ...(state.route === 'appellation' ? parent?.traditionalTerms ?? [] : []), entity.level].filter(Boolean).join(' · '))}</p>${state.route === 'designation' && parent ? `<p>${escape(t('parent'))}: ${button(name(parent), 'navigate', `data-kind="appellation" data-id="${escape(parent.id)}"`, 'quiet')}</p>` : ''}<p class="notice">${escape(t('detailInfo'))}</p>${partialHTML(parent)}${regulatoryApplicabilityHTML(parent,true)}${sharedGrapes}${typeIndex}<div class="wines">${wines.map((wine,index) => `${state.filters.length && (index===0 || state.matchIds.includes(wines[index-1].id)!==state.matchIds.includes(wine.id))?`<h2>${state.lang==='ja'?state.matchIds.includes(wine.id)?'今回の条件に合うタイプ':'その他のタイプ':state.matchIds.includes(wine.id)?'Matching types':'Other types'}</h2>`:''}${wineHTML(wine, state.matchIds.includes(wine.id), common, sharedFields, wines.length > 1)}`).join('')}</div>${sharedFields.length ? `<details id="shared-regulations" tabindex="-1"><summary>${state.lang==='ja'?'呼称全体の区域・栽培・ラベル条件':'Appellation-wide conditions'}</summary><p>${state.lang==='ja'?'タイプごとの適用条件も含む条文をまとめています。ここに書かれた条件がすべてのタイプへ一律に適用されるとは限りません。':'These shared paragraphs can contain conditions for specific wine types; not every condition applies to every type.'}</p>${withReferenceContext(commonContext, () => sharedFields.map(k=>optionalHTML(wines[0][k],k,entity.id)).join(''))}</details>` : ''}${conditionalAmendmentsHTML(entity)}${state.route === 'appellation' ? designationList(entity) : ''}${aboutLink(state.lang === 'ja' ? 'このアプリについて' : 'About this app')}${sourcesHTML(entity)}`;
 }
 
 function designationList(entity) {
