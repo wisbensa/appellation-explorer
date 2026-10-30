@@ -139,3 +139,26 @@ details.wine>summary>strong{font-size:1.125rem}
 
 /* Approved monochrome type silhouettes; text retains the semantic label. */
 .chip .wine-type-icon,.type-link .wine-type-icon{display:inline-block;width:1.25rem;height:1.25rem;vertical-align:middle;margin-inline-end:.3rem}.wine-overview>.wine-type-icon{display:inline-block}
+
+/* Approved revision 2: overview stays in place; only deliberate details expand. */
+article.wine{border:1px solid var(--line);border-radius:.7rem;padding:.8rem;margin:.7rem 0;overflow-wrap:anywhere}
+article.wine>h2{margin:0;font-size:1.2rem}article.wine .wine-overview{margin:.45rem 0}
+article.wine summary,.subject-contents summary,#sources summary{min-height:44px;padding:.6rem 0;cursor:pointer}
+.subject-contents a,.citation-links a,.source a{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:.35rem}
+.subject-contents section{display:flex;flex-wrap:wrap;gap:.25rem}.subject-contents h3{flex-basis:100%}
+.field-reading,.source-reading{margin:.65rem 0;white-space:pre-wrap;overflow-wrap:anywhere}.reading-qualification{padding-left:.75rem;border-left:2px solid var(--line)}
+.detail-field{font-size:1rem}.source-owner{border-top:1px solid var(--line);padding-top:.5rem}.source-field{margin:.75rem 0}.source-field h4{margin:.4rem 0}
+.listed-grape{display:block;margin:.5rem 0}.listed-grape .original{display:block}.listed-grape p{font-size:1rem}
+[data-reading-anchor]{scroll-margin-top:1rem;scroll-margin-bottom:8rem}button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid currentColor;outline-offset:3px}
+[hidden]{display:none!important}
+
+/* Untranslated source text stays readable with the corresponding field. */
+.untranslated-original { overflow-wrap: anywhere; }
+.untranslated-label { color: var(--muted); font-size: .85rem; margin-bottom: .25rem; }
+
+/* Type is the first reading choice; additional designations are subordinate. */
+.reading-choices{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0}
+.reading-choice{min-height:44px;white-space:normal;text-align:start}
+.reading-choice[aria-pressed="true"]{font-weight:700;outline:2px solid currentColor;outline-offset:2px}
+.qualifier-choices{margin-block:1rem;padding-inline-start:1rem;border-inline-start:2px solid currentColor}
+.wine[hidden],.wines details[hidden]{display:none}
