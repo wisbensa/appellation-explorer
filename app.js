@@ -35,7 +35,7 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, character => ({ 
 const button = (text, action, attributes = '', className = '') => `<button type="button" data-action="${action}" class="${className}" ${attributes}>${escape(text)}</button>`;
 const t = key => words[state.lang][key] ?? key;
 let data;
-const publicLoader = createPublicDataLoader({url:'./data/display.json.gz',encoding:'gzip',expectedBytes:43348997,expectedSha256:'1b0e52b8835cc78d31302862dd2ee27c1f5cababf46af0be360afc7631df5b75'});
+const publicLoader = createPublicDataLoader({url:'./data/display.json.gz',encoding:'gzip',expectedBytes:44825465,expectedSha256:'676b661a8ed990beff970ac5cae7a40305b83453e07b2b1c507e9a801c99a161'});
 let routeGeneration = 0, routeLoading = false;
 let candidates = [];
 let state = history.state?.ae ? history.state.state : readURL();
@@ -175,7 +175,7 @@ const grapeModeLabel = mode => ({ja:{listed:'資料に掲載',permitted:'使用�
 const retiredFilters = () => state.filters.filter(f=>f.kind==='grape' && f.mode==='exclude');
 const retiredMessage = () => state.lang==='ja'?'旧条件「不使用でも可」は廃止しました。条件を解除するか、「必須」「使用可能」を選び直してください。条件を自動で読み替えず、検索結果は表示していません。':'The old Can omit condition has been retired. Remove it or explicitly choose Required or Permitted. It has not been converted and search results are paused.';
 const filterLabel = filter => filter.kind==='grape'?`${name(find('grape',filter.id))||filter.id}${state.lang==='ja'?'：':': '}${grapeModeLabel(filter.mode)}`:`${state.lang==='ja'?`${filter.mode==='exclude'?'除外する':''}${t(filter.kind)}`:`${t(filter.mode)} ${t(filter.kind)}`}: ${name(find(filter.kind, filter.id)) || filter.id}`;
-function shortWine(wine) { return textValue(wine.shortName,state.lang)||name(wine); }
+function shortWine(wine) { const reading=data?.readerPresentation?.records.find(r=>r.recordId===wine.id);return reading?textValue(reading.title,state.lang):textValue(wine.shortName,state.lang)||name(wine); }
 const coverageHTML = () => `<p class="coverage">${escape(t('coverage'))}: ${data.appellations.length} ${state.lang === 'ja' ? '呼称' : 'appellations'} / ${data.regions.length} ${state.lang === 'ja' ? '地域（限定収録）' : 'regions (limited coverage)'}</p>`;
 const invalidFilters = () => state.filters.filter(filter => !find(filter.kind, filter.id));
 const activeFilters = () => {
@@ -614,6 +614,15 @@ function overviewHTML(wine,selection) {
 function wineHTML(wine,matched,common=false,sharedFields=[],useScopeHTML='',supplements=null) {
   const subject=detailModel.subjects.find(s=>s.id===wine.id),ja=state.lang==='ja';
   matched=matched&&Boolean(state.filters.length);
+  if(subject.reader){
+    const reading=subject.reader;
+    const composition=subject.fields.find(f=>f.key==='composition');
+    const initialGrapes=composition&&!composition.reader&&composition.state==='known'?renderDetailField(composition,{lang:state.lang,compositionHTML:grapeHTML,grapeHTML:grapeLink}):'';
+    const sections=subject.fields.filter(f=>!sharedFields.includes(f.key)&&!(f.key==='composition'&&initialGrapes)).map(f=>{const body=renderDetailField(f,{lang:state.lang,compositionHTML:grapeHTML,grapeHTML:grapeLink});return body?`<details id="${escape(f.id)}" class="wine-section" data-reading-anchor><summary>${escape(detailFieldTitle(f,{lang:state.lang}))}</summary>${body}</details>`:'';}).join('');
+    const scope=reading.scope?textValue(reading.scope,state.lang):'';
+    return `<article class="wine reader-wine ${reading.titleKind==='whole-record-literal'?'reader-literal-title':''} ${matched?'matched':''}" id="wine-${escape(wine.id)}" tabindex="-1" data-wine-id="${escape(wine.id)}" data-reading-anchor><h2>${escape(textValue(reading.title,state.lang))}</h2>${scope?`<p class="reader-scope">${escape(scope)}</p>`:''}${wineMatchConditionsHTML(wine)}${grapeConclusionHTML(wine)}${useScopeHTML}${initialGrapes?`<section class="initial-grapes"><h3>${ja?'使用品種':'Grape varieties'}</h3>${initialGrapes}</section>`:''}${renderSubjectOverview({...subject,fields:subject.fields.filter(f=>!sharedFields.includes(f.key))},{lang:state.lang})}${sections}</article>`;
+  }
+
   const overviewSelection=selectSubjectOverview({...subject,fields:subject.fields.filter(f=>!sharedFields.includes(f.key))},{lang:state.lang});
   const fieldBody=field=>renderDetailField(field,{lang:state.lang,compositionHTML:grapeHTML,grapeHTML:grapeLink,overviewSelection});
   const composition=subject.fields.find(f=>f.key==='composition');
@@ -751,7 +760,7 @@ function detailsHTML({materializeSources=false}={}) {
   const designationAgeingBody=designationAgeing?`<details id="designation-ageing" data-reading-anchor><summary>${ja?'呼称全体を対象とする熟成・出荷規定':'Designation-level ageing and release rules'}</summary>${renderDetailField(designationAgeing,{lang:state.lang})}</details>`:'';
   const documents=documentBody?`<section id="document-explanations">${documentBody}</section>`:'';
   const sourceCard=source=>`<article id="source-${escape(source.id)}" tabindex="-1"><h3>${escape(source.title)}</h3><p>${escape(source.agency)}</p>${sourceAnchor(source)}</article>`;
-  pendingDetailSources=()=>renderDetailSources(detailModel,{inlineOriginalNoteIds:new Set(detailModel.subjects.flatMap(subject=>subject.notes.filter(n=>n.text?.original&&(!n.text?.[state.lang]||n.role==='partial-reading')).map(n=>n.id))),lang:state.lang,ownerName:o=>name(o.source),termLabel:term=>name(find(term.kind,term.id)),documentHTML:sourceCard});
+  pendingDetailSources=()=>renderDetailSources(detailModel,{inlineOriginalNoteIds:new Set(detailModel.subjects.flatMap(subject=>subject.notes.filter(n=>!subject.reader&&n.text?.original&&(!n.text?.[state.lang]||n.role==='partial-reading')).map(n=>n.id))),lang:state.lang,ownerName:o=>name(o.source),termLabel:term=>name(find(term.kind,term.id)),documentHTML:sourceCard});
   const sources=materializeSources?pendingDetailSources():`<details id="sources" class="sources-disclosure"><summary>${ja?'出典・公式原文':'Sources and official originals'}</summary><div id="sources-content"></div></details>`;
   return `<h1 id="detail-heading" tabindex="-1">${escape(name(entity))}</h1>${original(entity)!==name(entity)?`<p class="original">${escape(original(entity))}</p>`:''}<p class="meta-line">${escape([name(find('country',parent.countryId)),regionNames(parent),parent.gi,...(parent.traditionalTerms||[])].filter(Boolean).join(' · '))}</p>${state.route==='designation'?`<p>${escape(t('parent'))}: ${button(name(parent),'navigate',`data-kind="appellation" data-id="${escape(parent.id)}"`,'quiet')}</p>`:''}${listingContext}${premierCruHTML(parent)}${contents}${existentialUse}${commonBody}${sharedBody}<div class="wines">${list||`<p>${ja?'詳しい情報はまだ確認できていません。':'Details are not confirmed.'}</p>`}</div>${search}${designationAgeingBody}${documents}${regulatoryApplicabilityHTML(parent,true)}${conditionalAmendmentsHTML(entity)}${state.route==='appellation'?nonUseHTML(parent)+designationList(entity):''}${aboutLink(ja?'このアプリについて':'About this app')}${sources}`;
 }
