@@ -9,7 +9,7 @@ export function detailOccurrenceId(version, ownerKind, ownerId, field, ...path) 
 export function createDetailModel(data, entity) {
   const version = data.version;
   const readerRecords=new Map((data.readerPresentation?.records||[]).map(r=>[r.recordId,r]));
-  const readingRoles=[7,8,9].includes(data.schemaVersion);
+  const readingRoles=[7,8,9,10].includes(data.schemaVersion);
   const citations = [];
   const citationByContent = new Map();
   const owners = [];
@@ -101,7 +101,7 @@ export function createDetailModel(data, entity) {
   // Proof ownership is supplied by the source; the reader never derives use from a name/ratio.
   const useOwner=parent||entity;
   const subjectIds=new Set(subjects.map(s=>s.id));
-  const grapeUseScopes=([8,9].includes(data.schemaVersion)?useOwner.grapeUseScopes||[]:[]).filter(scope=>scope.target.kind==='records'?scope.target.recordIds.some(id=>subjectIds.has(id)):!parent).map(scope=>{
+  const grapeUseScopes=([8,9,10].includes(data.schemaVersion)?useOwner.grapeUseScopes||[]:[]).filter(scope=>scope.target.kind==='records'?scope.target.recordIds.some(id=>subjectIds.has(id)):!parent).map(scope=>{
     const modelId=id('grape-use',useOwner.id,scope.id);
     const required=new Map(scope.individualRequired.map(claim=>[claim.allowedIndex,claim]));
     return {id:modelId,source:scope,targetIds:scope.target.kind==='records'?scope.target.recordIds.filter(id=>subjectIds.has(id)):[],
@@ -109,7 +109,7 @@ export function createDetailModel(data, entity) {
       citations:citationRefs(scope.evidence,modelId)};
   });
   const allRecords=[...(useOwner.wines||[]),...(data.designations||[]).filter(d=>d.appellationId===useOwner.id).flatMap(d=>d.wines||[])];
-  const sharedFieldGroups=([8,9].includes(data.schemaVersion)?useOwner.sharedFieldGroups||[]:[]).filter(group=>group.recordIds.some(id=>subjectIds.has(id))).map(group=>{
+  const sharedFieldGroups=([8,9,10].includes(data.schemaVersion)?useOwner.sharedFieldGroups||[]:[]).filter(group=>group.recordIds.some(id=>subjectIds.has(id))).map(group=>{
     const canonicalId=group.recordIds[0];
     let canonical=owners.find(o=>o.kind==='record'&&o.id===canonicalId);
     if(!canonical){canonical=owner(allRecords.find(w=>w.id===canonicalId),'record');canonical.types=(canonical.source.publishedTypeObservation?.terms||[]).filter(t=>t.kind==='type');canonical.qualifiers=(canonical.source.publishedTypeObservation?.terms||[]).filter(t=>t.kind==='qualifier');canonical.fields.push(field(canonical.source.display[group.field],canonical,group.field));}

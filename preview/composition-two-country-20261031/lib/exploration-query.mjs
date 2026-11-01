@@ -59,7 +59,7 @@ export function evaluateExplorationQuery(data, filters, {version=3}={}) {
   const state = stateOf(filters,version);
   if (state.status !== 'ok') return empty(state.status,state.reason);
   if (filters.some(f => !knownReference(data,f))) return empty('invalid','unknown-filter-reference');
-  if([8,9].includes(data.schemaVersion)&&filters.some(f=>f.kind==='grape')){
+  if([8,9,10].includes(data.schemaVersion)&&filters.some(f=>f.kind==='grape')){
     const results=[],unknownAppellations=[];
     const identity=filters.filter(f=>['country','region'].includes(f.kind));
     const semantic=filters.filter(f=>!['country','region'].includes(f.kind));

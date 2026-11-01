@@ -21,7 +21,7 @@ export function canonicalFilters(filters) {
 }
 export function validateDisplayData(data) {
   object(data,'root');
-  if(data.format!==DISPLAY_FORMAT || ![1,2,3,4,5,6,7,8,9].includes(data.schemaVersion)) fail('unsupported format/version; legacy data is not accepted');
+  if(data.format!==DISPLAY_FORMAT || ![1,2,3,4,5,6,7,8,9,10].includes(data.schemaVersion)) fail('unsupported format/version; legacy data is not accepted');
   const top=['format','schemaVersion','version','countries','regions','grapes','appellations','designations','candidates','sources','transitions','regionGroups','appellationGroups'];
   for(const key of Object.keys(data)) if(!top.includes(key)&&key!=='readerPresentation') fail(`unsupported root key ${key}`);
   string(data.version,'version');
@@ -98,7 +98,7 @@ export function validateDisplayData(data) {
     if(['known','no_obligation'].includes(p.state)&&!p.evidence.length)fail(`${path}: known display requires evidence`);
     for(const item of array(p.items,`${path}.items`)){keys(item,['text','grapeId','evidence'],path);localized(item.text,`${path}.items.text`);if(item.grapeId)ref(item.grapeId,sets.grapes,path);sourceEvidence(item.evidence,`${path}.items.evidence`);}
     if(p.compositionView)compositionView(p.compositionView,`${path}.compositionView`);
-    if(p.values)for(const v of array(p.values,`${path}.values`)){keys(v,['text','contexts','translation','evidence',...([7,8,9].includes(data.schemaVersion)?['presentation']:[])],path);localized(v.text,path);if([7,8,9].includes(data.schemaVersion))readingPresentation(v,path);else paragraphs(v.contexts,path);if(v.translation)localized(v.translation,path);sourceEvidence(v.evidence,path);}
+    if(p.values)for(const v of array(p.values,`${path}.values`)){keys(v,['text','contexts','translation','evidence',...([7,8,9,10].includes(data.schemaVersion)?['presentation']:[])],path);localized(v.text,path);if([7,8,9,10].includes(data.schemaVersion))readingPresentation(v,path);else paragraphs(v.contexts,path);if(v.translation)localized(v.translation,path);sourceEvidence(v.evidence,path);}
     if(['not_found','unverified'].includes(p.state)&&!p.statusDetail)fail(`${path}: explicit status explanation required`);
     if(p.statusDetail){keys(p.statusDetail,['label','text'],path);localized(p.statusDetail.label,path);localized(p.statusDetail.text,path);}
     if(p.calculation)paragraphs(p.calculation,path);
@@ -112,16 +112,28 @@ export function validateDisplayData(data) {
   for(const collection of ['countries','regions','grapes','appellations','designations','candidates','transitions'])for(const entity of data[collection])localized(entity.name,`${collection}.${entity.id}.name`);
   for(const country of data.countries)keys(country,['id','name'],'country');
   for(const grape of data.grapes)keys(grape,['id','name'],'grape');
-  for(const region of data.regions){keys(region,['id','name','countryId','parentId'],'region');ref(region.countryId,sets.countries,'region country');if(region.parentId)ref(region.parentId,sets.regions,'region parent');let node=region;const seen=new Set();while(node){if(seen.has(node.id))fail('region cycle');seen.add(node.id);node=data.regions.find(r=>r.id===node.parentId);if(node&&node.countryId!==region.countryId)fail('cross-country region parent');}}
+  for(const region of data.regions){keys(region,['id','name','countryId','parentId',...(data.schemaVersion===10?['navigationParentId']:[])],'region');ref(region.countryId,sets.countries,'region country');if(region.parentId)ref(region.parentId,sets.regions,'region parent');let node=region;const seen=new Set();while(node){if(seen.has(node.id))fail('region cycle');seen.add(node.id);node=data.regions.find(r=>r.id===node.parentId);if(node&&node.countryId!==region.countryId)fail('cross-country region parent');}}
+  if(data.schemaVersion===10)for(const region of data.regions){
+    if(Object.hasOwn(region,'navigationParentId'))ref(region.navigationParentId,sets.regions,'navigation parent');
+    let node=region;const seen=new Set();while(node){if(seen.has(node.id))fail('navigation cycle');seen.add(node.id);node=data.regions.find(r=>r.id===node.navigationParentId);if(node&&node.countryId!==region.countryId)fail('cross-country navigation parent');}
+  }
   const candidateKeys=new Set();for(const c of data.candidates){string(c.id,'candidate.id');keys(c,['id','name','kind','searchTerms','countryId','regionIds','parentId','appellationId','qualification'],'candidate');if(!kinds.includes(c.kind))fail('candidate kind');array(c.searchTerms,'candidate.searchTerms').forEach(x=>string(x,'search term')); const key=`${c.kind}:${c.id}`;if(candidateKeys.has(key))fail('duplicate candidate');candidateKeys.add(key);const collection={country:'countries',region:'regions',grape:'grapes',appellation:'appellations',designation:'designations'}[c.kind];if(collection&&!(c.kind==='appellation'&&sets.transitions.has(c.id)))ref(c.id,sets[collection],'candidate target');if(c.countryId)ref(c.countryId,sets.countries,'candidate country');if(c.parentId)ref(c.parentId,sets.regions,'candidate parent');if(c.appellationId)ref(c.appellationId,sets.appellations,'candidate appellation');if(c.regionIds)array(c.regionIds,'candidate regions').forEach(id=>ref(id,sets.regions,'candidate region'));if(c.qualification!==undefined)string(c.qualification,'candidate qualification');}
+  if(data.schemaVersion===10)for(const c of data.candidates){
+    const target=c.kind==='region'?data.regions.find(r=>r.id===c.id):c.kind==='appellation'?data.appellations.find(a=>a.id===c.id):undefined;
+    if(!target)continue; // Explicit historical transition candidates are not current AOC entities.
+    if(c.countryId!==undefined&&c.countryId!==target.countryId)fail('candidate target country mismatch');
+    if(c.parentId!==undefined&&c.parentId!==target.parentId)fail('candidate target search parent mismatch');
+    if(c.regionIds!==undefined&&(c.regionIds.length!==(target.regionIds||[]).length||new Set(c.regionIds).size!==c.regionIds.length||c.regionIds.some(id=>!target.regionIds?.includes(id))))fail('candidate target search regions mismatch');
+  }
   const declaredSources=(entity)=>{ const visit=value=>{if(!value||typeof value!=='object')return;if(value.sourceId&&!entity.sourceIds.includes(value.sourceId))fail('evidence source missing from entity sourceIds');for(const child of Object.values(value))if(child&&typeof child==='object')Array.isArray(child)?child.forEach(visit):visit(child);};visit(entity);};
   const allWineIds=new Set();
   for(const entity of [...data.appellations,...data.designations]){
-    keys(entity,[...(data.schemaVersion===9&&data.appellations.includes(entity)?['compositionStatements']:[]),...([8,9].includes(data.schemaVersion)&&data.appellations.includes(entity)?['grapeUseScopes','grapeUseCoverage','sharedFieldGroups']:[]),...([7,8,9].includes(data.schemaVersion)?['documentStatements']:[]),'id','name','countryId','regionIds','sourceIds','evidence','sharedFields','wines','appellationId','qualification','gi','traditionalTerms','level','notice','applicability','designationContext','conditionalAmendments',...([3,4,5].includes(data.schemaVersion)&&data.appellations.includes(entity)?['designationAgeing']:[]),...(data.schemaVersion===5&&data.appellations.includes(entity)?['grapeNonUse']:[]),...([6,7,8,9].includes(data.schemaVersion)&&data.appellations.includes(entity)?['publishedGrapeObservations']:[])],'entity');
+    keys(entity,[...(data.schemaVersion===10&&data.appellations.includes(entity)?['navigationRegionIds']:[]),...([9,10].includes(data.schemaVersion)&&data.appellations.includes(entity)?['compositionStatements']:[]),...([8,9,10].includes(data.schemaVersion)&&data.appellations.includes(entity)?['grapeUseScopes','grapeUseCoverage','sharedFieldGroups']:[]),...([7,8,9,10].includes(data.schemaVersion)?['documentStatements']:[]),'id','name','countryId','regionIds','sourceIds','evidence','sharedFields','wines','appellationId','qualification','gi','traditionalTerms','level','notice','applicability','designationContext','conditionalAmendments',...([3,4,5].includes(data.schemaVersion)&&data.appellations.includes(entity)?['designationAgeing']:[]),...(data.schemaVersion===5&&data.appellations.includes(entity)?['grapeNonUse']:[]),...([6,7,8,9,10].includes(data.schemaVersion)&&data.appellations.includes(entity)?['publishedGrapeObservations']:[])],'entity');
     if(data.appellations.includes(entity)){ref(entity.countryId,sets.countries,'appellation country');array(entity.regionIds,'regionIds').forEach(id=>{ref(id,sets.regions,'appellation region');if(data.regions.find(r=>r.id===id).countryId!==entity.countryId)fail('appellation region country');});}
     else ref(entity.appellationId,sets.appellations,'designation parent');
+    if(data.schemaVersion===10&&data.appellations.includes(entity)){const nav=array(entity.navigationRegionIds,'navigationRegionIds');if(new Set(nav).size!==nav.length)fail('duplicate navigation membership');for(const id of nav){ref(id,sets.regions,'navigation region');if(data.regions.find(r=>r.id===id).countryId!==entity.countryId)fail('navigation region country');}}
     for(const key of ['qualification','gi','level'])if(entity[key]!==undefined)string(entity[key],key);if(entity.traditionalTerms!==undefined)array(entity.traditionalTerms,'traditionalTerms').forEach(x=>string(x,'traditional term'));
-    if([7,8,9].includes(data.schemaVersion))documentStatements(entity.documentStatements,'documentStatements');
+    if([7,8,9,10].includes(data.schemaVersion))documentStatements(entity.documentStatements,'documentStatements');
     array(entity.sourceIds,'sourceIds').forEach(id=>ref(id,sets.sources,'sourceIds'));sourceEvidence(entity.evidence,'entity.evidence');
     if(Object.hasOwn(entity,'compositionStatements')){
       const rows=entity.compositionStatements;ids(rows,'compositionStatements');
@@ -144,8 +156,8 @@ export function validateDisplayData(data) {
     array(entity.sharedFields,'sharedFields').forEach(k=>{if(!DISPLAY_FIELDS.includes(k))fail('shared field');});
     for(const wine of array(entity.wines,'wines')){
       object(wine,'wine');string(wine.id,'wine id');if(allWineIds.has(wine.id))fail('duplicate wine id');allWineIds.add(wine.id);localized(wine.name,'wine name');localized(wine.shortName,'wine shortName');localized(wine.scope,'wine scope');sourceEvidence(wine.evidence,'wine evidence');object(wine.display,'wine display');
-      for(const key of Object.keys(wine))if(![...([7,8,9].includes(data.schemaVersion)?['subjectIdentity','notes']:['classificationNotice']),'id','name','shortName','scope','evidence','display','searchCases','productionConditions',...([6,7,8,9].includes(data.schemaVersion)?['publishedTypeObservation']:[])].includes(key))fail(`unsupported wine key ${key}`);
-      if([7,8,9].includes(data.schemaVersion)){const i=wine.subjectIdentity;keys(i,['kind','state'],'subjectIdentity');if(i.kind!=='record'||i.state!=='unresolved')fail('subjectIdentity semantics');}
+      for(const key of Object.keys(wine))if(![...([7,8,9,10].includes(data.schemaVersion)?['subjectIdentity','notes']:['classificationNotice']),'id','name','shortName','scope','evidence','display','searchCases','productionConditions',...([6,7,8,9,10].includes(data.schemaVersion)?['publishedTypeObservation']:[])].includes(key))fail(`unsupported wine key ${key}`);
+      if([7,8,9,10].includes(data.schemaVersion)){const i=wine.subjectIdentity;keys(i,['kind','state'],'subjectIdentity');if(i.kind!=='record'||i.state!=='unresolved')fail('subjectIdentity semantics');}
       if(wine.notes!==undefined)sourceNotes(wine.notes,'wine.notes');
       if(wine.classificationNotice)localized(wine.classificationNotice,'classificationNotice');
       if(wine.productionConditions){const p=wine.productionConditions;keys(p,['title','paragraphs','evidence'],'productionConditions');localized(p.title,'productionConditions');paragraphs(p.paragraphs,'productionConditions');sourceEvidence(p.evidence,'productionConditions');}
@@ -162,7 +174,7 @@ export function validateDisplayData(data) {
       for(const field of DISPLAY_FIELDS){presentation(wine.display[field],`wine.display.${field}`);if(field!=='composition'&&wine.display[field].compositionView)fail('composition view on other field');if(wine.display[field].historicalSummaries)fail('historical summaries belong to applicability');}
       wineRatioIds=undefined;
       for(const key of Object.keys(wine.display))if(!DISPLAY_FIELDS.includes(key))fail('unsupported display field');
-      if([6,7,8,9].includes(data.schemaVersion)&&array(wine.searchCases,'wine.searchCases').length)fail('snapshot6 wine search cases forbidden');
+      if([6,7,8,9,10].includes(data.schemaVersion)&&array(wine.searchCases,'wine.searchCases').length)fail('snapshot6 wine search cases forbidden');
       const caseKeys=new Set();for(const entry of array(wine.searchCases,'wine.searchCases')){
         keys(entry,['filters','state','scopeId','evidence','conditions',...(data.schemaVersion===5?['targetDate']:[])],'search case');const filters=array(entry.filters,'case.filters');if(!filters.length)fail('empty search case');for(const f of filters){keys(f,['kind','id','mode'],'filter');string(f.id,'filter.id');if(!['grape','gi','traditional','type','qualifier'].includes(f.kind)||!['include','exclude','required'].includes(f.mode)||(f.kind==='grape'?!['include','required'].includes(f.mode):f.mode==='required'))fail('unsupported search filter');if(!candidateKeys.has(`${f.kind}:${f.id}`))fail('unknown search filter target');}
         if(Object.hasOwn(entry,'targetDate')&&(typeof entry.targetDate!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(entry.targetDate)||!Number.isFinite(Date.parse(entry.targetDate+'T00:00:00Z'))||new Date(entry.targetDate+'T00:00:00Z').toISOString().slice(0,10)!==entry.targetDate))fail('case targetDate');const key=canonicalFilters(filters);if(caseKeys.has(key))fail('duplicate joint search case');caseKeys.add(key);if(!['match','noMatch','unknown','conflict','notApplicable'].includes(entry.state))fail('search case state');string(entry.scopeId,'case.scopeId');sourceEvidence(entry.evidence,'case.evidence');if(['match','noMatch'].includes(entry.state)&&!entry.evidence.length)fail('search outcome requires evidence');array(entry.conditions,'case.conditions').forEach(c=>localized(c,'condition'));
@@ -178,7 +190,7 @@ export function validateDisplayData(data) {
         if(!candidateKeys.has(`grape:${o.grapeId}`))fail('observed grape candidate missing');
         sourceEvidence(o.evidence,'published grape evidence');
         if(!o.evidence.length||o.evidence.some(e=>data.sources.find(s=>s.id===e.sourceId)?.identity.state!=='available'))fail('published grape requires captured evidence');
-        if([7,8,9].includes(data.schemaVersion)){for(const c of array(o.conditions,'published grape conditions')){keys(c,['text','role','scope'],'published grape condition');localized(c.text,'published grape condition');if(!['qualification','source-context'].includes(c.role)||c.scope!=='published-summary')fail('published grape condition role/scope');}}else paragraphs(o.conditions,'published grape conditions');if(!o.conditions.length)fail('published grape scope conditions missing');
+        if([7,8,9,10].includes(data.schemaVersion)){for(const c of array(o.conditions,'published grape conditions')){keys(c,['text','role','scope'],'published grape condition');localized(c.text,'published grape condition');if(!['qualification','source-context'].includes(c.role)||c.scope!=='published-summary')fail('published grape condition role/scope');}}else paragraphs(o.conditions,'published grape conditions');if(!o.conditions.length)fail('published grape scope conditions missing');
       }
     }
     if(Object.hasOwn(entity,'grapeNonUse'))validateNonUsePresentation(entity.grapeNonUse,sets);
@@ -188,9 +200,9 @@ export function validateDisplayData(data) {
   for(const s of data.sources){keys(s,['id','title','agency','url','linkLabel','primary','identity','archiveHash','archiveMember','publishedAt','effectiveFrom','retrievedAt','verifiedAt'],'source');string(s.title,'source.title');string(s.agency,'source.agency');localized(s.linkLabel,'source.linkLabel');if(s.url){let url;try{url=new URL(s.url);}catch{fail('source URL');}if(!['https:','http:'].includes(url.protocol))fail('source URL protocol');}if(typeof s.primary!=='boolean')fail('source.primary');keys(s.identity,['state','sha256','notice'],'source.identity');if(s.identity.state==='available'){if(typeof s.identity.sha256!=='string'||!/^[a-f0-9]{64}$/i.test(s.identity.sha256)||s.identity.notice!==undefined)fail('source identity hash');}else if(s.identity.state==='unavailable'){localized(s.identity.notice,'source identity notice');if(s.identity.sha256!==undefined)fail('unavailable identity has hash');}else fail('source identity state');for(const key of ['archiveHash','archiveMember','publishedAt','effectiveFrom','retrievedAt','verifiedAt'])if(s[key]!==undefined)string(s[key],`source.${key}`);if(s.archiveHash!==undefined&&!/^[a-f0-9]{64}$/i.test(s.archiveHash))fail('archive hash');}
   for(const tr of data.transitions){keys(tr,['id','name','kind','message','successorIds','sourceIds','evidence'],'transition');if(sets.appellations.has(tr.id))fail('transition collides with current appellation');localized(tr.message,'transition.message');array(tr.successorIds,'successorIds').forEach(id=>ref(id,sets.appellations,'successor'));array(tr.sourceIds,'transition.sourceIds').forEach(id=>ref(id,sets.sources,'transition source'));sourceEvidence(tr.evidence,'transition evidence');declaredSources(tr);}
   const groupedRegions=new Set();
-  for(const g of data.regionGroups){keys(g,['id','countryId','parentId','label','regionIds'],'region group');ref(g.countryId,sets.countries,'region group country');if(g.parentId){ref(g.parentId,sets.regions,'region group parent');if(data.regions.find(r=>r.id===g.parentId).countryId!==g.countryId)fail('region group parent country');}localized(g.label,'region group label');array(g.regionIds,'region group ids').forEach(id=>{ref(id,sets.regions,'region group member');const key=JSON.stringify([g.countryId,g.parentId||null,id]);if(groupedRegions.has(key))fail('duplicate region group membership');groupedRegions.add(key);const r=data.regions.find(r=>r.id===id);if(r.countryId!==g.countryId||(r.parentId||null)!==(g.parentId||null))fail('region group membership');});}
-  for(const g of data.appellationGroups){keys(g,['id','regionId','label','appellationIds'],'appellation group');ref(g.regionId,sets.regions,'appellation group region');localized(g.label,'appellation group label');array(g.appellationIds,'appellation group ids').forEach(id=>{ref(id,sets.appellations,'appellation group member');if(!regionBelongs(data,data.appellations.find(a=>a.id===id).regionIds,g.regionId))fail('appellation group membership');});}
-  if([8,9].includes(data.schemaVersion))for(const app of data.appellations){
+  for(const g of data.regionGroups){keys(g,['id','countryId','parentId','label','regionIds'],'region group');ref(g.countryId,sets.countries,'region group country');if(g.parentId){ref(g.parentId,sets.regions,'region group parent');if(data.regions.find(r=>r.id===g.parentId).countryId!==g.countryId)fail('region group parent country');}localized(g.label,'region group label');array(g.regionIds,'region group ids').forEach(id=>{ref(id,sets.regions,'region group member');const key=JSON.stringify([g.countryId,g.parentId||null,id]);if(groupedRegions.has(key))fail('duplicate region group membership');groupedRegions.add(key);const r=data.regions.find(r=>r.id===id);if(r.countryId!==g.countryId||(navigationParentId(data,r)||null)!==(g.parentId||null))fail('region group membership');});}
+  for(const g of data.appellationGroups){keys(g,['id','regionId','label','appellationIds'],'appellation group');ref(g.regionId,sets.regions,'appellation group region');localized(g.label,'appellation group label');array(g.appellationIds,'appellation group ids').forEach(id=>{ref(id,sets.appellations,'appellation group member');if(!navigationRegionBelongs(data,navigationRegionIds(data,data.appellations.find(a=>a.id===id)),g.regionId))fail('appellation group membership');});}
+  if([8,9,10].includes(data.schemaVersion))for(const app of data.appellations){
     validateGrapeUseProof(data,app);
     const owners=[app,...data.designations.filter(d=>d.appellationId===app.id)];
     const records=new Map(owners.flatMap(e=>e.wines.map(w=>[w.id,{wine:w,entity:e}]))),groupIds=new Set(),members=new Set();
@@ -228,7 +240,7 @@ const nonUseFilter=f=>f.kind==='grape'&&f.mode==='non-use';
 /** Appellation-wide gate: never derive the domain from filtered/public wines. */
 export function evaluateAppellationNonUse(data,app,filters){
   const fs=filters.filter(nonUseFilter);if(!fs.length)return null;
-  if([6,7,8,9].includes(data.schemaVersion))return {status:'unknown',reason:'published-listing-does-not-establish-non-use',conditions:[]};
+  if([6,7,8,9,10].includes(data.schemaVersion))return {status:'unknown',reason:'published-listing-does-not-establish-non-use',conditions:[]};
   if(fs.some(f=>!data.grapes.some(g=>g.id===f.id)))return {status:'unknown',reason:'non-use-reference-unproved',conditions:[]};
   if(filters.some(f=>f.kind==='grape'&&f.mode==='exclude'))return {status:'unknown',reason:'retired-exclude',conditions:[]};
   if(filters.some(f=>f.kind==='grape'&&['include','required'].includes(f.mode)&&fs.some(n=>n.id===f.id)))return {status:'noMatch',reason:'contradictory-grape-predicates',conditions:[]};
@@ -273,6 +285,10 @@ export function findCandidates(data,query,lang){
 }
 export function upsertFilter(filters,filter,mode=filter.mode||'include'){return [...filters.filter(f=>!(f.kind===filter.kind&&f.id===filter.id)),{kind:filter.kind,id:filter.id,mode}];}
 export function regionBelongs(data,regionIds,id){return regionIds.some(regionId=>{let region=data.regions.find(r=>r.id===regionId);const seen=new Set();while(region&&!seen.has(region.id)){if(region.id===id)return true;seen.add(region.id);region=data.regions.find(r=>r.id===region.parentId);}return false;});}
+// Navigation never supplies semantic search membership. Old versions explicitly use their old wire.
+export const navigationParentId=(data,region)=>data.schemaVersion===10?region?.navigationParentId:region?.parentId;
+export const navigationRegionIds=(data,app)=>data.schemaVersion===10?app?.navigationRegionIds:app?.regionIds;
+export function navigationRegionBelongs(data,regionIds,id){return regionIds.some(regionId=>{let region=data.regions.find(r=>r.id===regionId);const seen=new Set();while(region&&!seen.has(region.id)){if(region.id===id)return true;seen.add(region.id);region=data.regions.find(r=>r.id===navigationParentId(data,region));}return false;});}
 export const transitionForAppellation=(data,id)=>data.transitions.find(t=>t.id===id);
 export const countryEntries=data=>data.countries.map(entity=>({entity,count:data.appellations.filter(a=>a.countryId===entity.id).length}));
 // Explicit DTO headings are authoritative for this browse level. The finite
@@ -280,19 +296,19 @@ export const countryEntries=data=>data.countries.map(entity=>({entity,count:data
 // source/legal membership are never changed. Unknown IDs remain reachable.
 export function browseRegionGroups(data,countryId,parentId){
   const parent=parentId||null;
-  const eligible=data.regions.filter(r=>r.countryId===countryId&&(r.parentId||null)===parent);
+  const eligible=data.regions.filter(r=>r.countryId===countryId&&(navigationParentId(data,r)||null)===parent);
   const supplied=data.regionGroups.filter(g=>g.countryId===countryId&&(g.parentId||null)===parent);
   const configured=COUNTRY_BROWSE_GROUPS.filter(g=>g.countryId===countryId&&(g.parentId||null)===parent);
   const groups=supplied.length?supplied:configured;
-  const make=regions=>regions.map(entity=>({entity,count:new Set(data.appellations.filter(a=>regionBelongs(data,a.regionIds,entity.id)).map(a=>a.id)).size})).filter(entry=>entry.count>0);
+  const make=regions=>regions.map(entity=>({entity,count:new Set(data.appellations.filter(a=>navigationRegionBelongs(data,navigationRegionIds(data,a),entity.id)).map(a=>a.id)).size})).filter(entry=>entry.count>0);
   const used=new Set(groups.flatMap(g=>g.regionIds));
   return [...groups.map(g=>({...g,entries:make(eligible.filter(r=>g.regionIds.includes(r.id)))})),{id:'ungrouped',label:groups.length?{ja:'その他の地域',en:'Other regions'}:null,entries:make(eligible.filter(r=>!used.has(r.id)))}].filter(g=>g.entries.length);
 }
 
 export function regionalAppellationGroups(data,apps,regionId){const groups=data.appellationGroups.filter(g=>g.regionId===regionId);const used=new Set();const result=groups.map(g=>({...g,appellations:apps.filter(a=>{if(used.has(a.id)||!g.appellationIds.includes(a.id))return false;used.add(a.id);return true;})}));const rest=apps.filter(a=>!used.has(a.id));if(rest.length)result.push({id:'ungrouped',label:{ja:'呼称',en:'Appellations'},appellations:rest});return result.filter(g=>g.appellations.length);}
 export function evaluateWine(data,app,wine,filters){
-  let regionUnknown=false;for(const f of filters.filter(f=>['country','region'].includes(f.kind))){if([6,7,8,9].includes(data.schemaVersion)&&f.kind==='region'&&!app.regionIds.length){regionUnknown=true;continue;}const present=f.kind==='country'?app.countryId===f.id:regionBelongs(data,app.regionIds,f.id);if(f.mode==='exclude'?present:!present)return {status:'noMatch',conditions:[]};}if(regionUnknown)return {status:'unknown',reason:'region-membership-unconfirmed',conditions:[]};
-  if([8,9].includes(data.schemaVersion)&&filters.some(f=>f.kind==='grape')){
+  let regionUnknown=false;for(const f of filters.filter(f=>['country','region'].includes(f.kind))){if([6,7,8,9,10].includes(data.schemaVersion)&&f.kind==='region'&&!app.regionIds.length){regionUnknown=true;continue;}const present=f.kind==='country'?app.countryId===f.id:regionBelongs(data,app.regionIds,f.id);if(f.mode==='exclude'?present:!present)return {status:'noMatch',conditions:[]};}if(regionUnknown)return {status:'unknown',reason:'region-membership-unconfirmed',conditions:[]};
+  if([8,9,10].includes(data.schemaVersion)&&filters.some(f=>f.kind==='grape')){
     const grapes=filters.filter(f=>f.kind==='grape');
     const others=filters.filter(f=>!['country','region','grape'].includes(f.kind));
     if(others.some(f=>!['type','qualifier'].includes(f.kind)||f.mode!=='include'))return {status:'unknown',reason:'joint-scope-unproved',conditions:[]};
@@ -301,7 +317,7 @@ export function evaluateWine(data,app,wine,filters){
   }
   const nonUse=evaluateAppellationNonUse(data,app,filters);if(nonUse&&nonUse.status!=='match')return nonUse;
   const semantic=filters.filter(f=>!['country','region'].includes(f.kind)&&!nonUseFilter(f));if(!semantic.length)return nonUse??{status:'match',conditions:[]};
-  if([6,7,8,9].includes(data.schemaVersion)&&semantic.length===1&&['type','qualifier'].includes(semantic[0].kind)&&semantic[0].mode==='include'){
+  if([6,7,8,9,10].includes(data.schemaVersion)&&semantic.length===1&&['type','qualifier'].includes(semantic[0].kind)&&semantic[0].mode==='include'){
     const o=wine.publishedTypeObservation;if(o?.terms.some(t=>t.kind===semantic[0].kind&&t.id===semantic[0].id))return {status:'match',scope:o.scope,scopeId:wine.id,evidence:o.evidenceIndices.map(i=>wine.evidence[i]),conditions:[{ja:'公式要約の当該タイプ見出しに明記された特徴です。網羅的な許可・不使用や他条件との同時成立は示しません。',en:'Explicitly stated in this target’s published summary heading; not exhaustive permission, non-use or proof of conjunction with other conditions.'}]};
   }
   const entry=wine.searchCases.find(c=>canonicalFilters(c.filters)===canonicalFilters(semantic));if(nonUse&&(!entry||entry.targetDate!==app.grapeNonUse?.targetDate||!app.grapeNonUse.domain.cells.some(c=>c.scopeId===entry.scopeId)))return {status:'unknown',reason:'joint-time-scope-unproved',conditions:[]};return {status:entry?.state||'unknown',conditions:entry?.conditions||[],scopeId:entry?.scopeId,evidence:entry?.evidence||[]};
@@ -313,14 +329,14 @@ export function evaluatePublishedGrapeObservation(data,app,filters){
   const semantic=filters.filter(f=>!['country','region'].includes(f.kind));
   if(semantic.length!==1||semantic[0].kind!=='grape'||semantic[0].mode!=='include')return null;
   const observation=app.publishedGrapeObservations?.find(o=>o.grapeId===semantic[0].id);
-  return observation?{status:'match',appellationLevel:true,scope:observation.scope,conditions:[7,8,9].includes(data.schemaVersion)?observation.conditions.filter(c=>c.role==='qualification').map(c=>c.text):observation.conditions,evidence:observation.evidence}:null;
+  return observation?{status:'match',appellationLevel:true,scope:observation.scope,conditions:[7,8,9,10].includes(data.schemaVersion)?observation.conditions.filter(c=>c.role==='qualification').map(c=>c.text):observation.conditions,evidence:observation.evidence}:null;
 }
 export function searchAppellations(data,filters){const results=[],unknownAppellations=[];for(const appellation of data.appellations){const identityOutcome=evaluateWine(data,appellation,{searchCases:[]},filters.filter(f=>['country','region'].includes(f.kind)));if(identityOutcome.status==='noMatch')continue;if(identityOutcome.status==='unknown'){unknownAppellations.push(appellation);continue;}/* Identity predicates do not require a declared wine. Empty browse and rule predicates retain their existing paths. */if(filters.length&&filters.every(f=>['country','region'].includes(f.kind))&&!appellation.wines.length&&!data.designations.some(d=>d.appellationId===appellation.id&&d.wines.length)){results.push({appellation,matches:[]});continue;}const publishedGrapeOutcome=evaluatePublishedGrapeObservation(data,appellation,filters);if(publishedGrapeOutcome){results.push({appellation,matches:[],publishedGrapeOutcome});continue;}const gate=evaluateAppellationNonUse(data,appellation,filters);if(gate?.status==='noMatch')continue;if(gate?.status==='unknown'){unknownAppellations.push(appellation);continue;}if(gate&&filters.every(f=>nonUseFilter(f)||['country','region'].includes(f.kind))){results.push({appellation,matches:[],nonUseOutcome:gate});continue;}const matches=[];let unresolved=false;const entities=[appellation,...data.designations.filter(d=>d.appellationId===appellation.id)];for(const entity of entities)for(const wine of entity.wines){const outcome=evaluateWine(data,appellation,wine,filters);if(outcome.status==='match')matches.push({wine,...(entity!==appellation?{designation:entity}:{}),...outcome});else if(['unknown','conflict'].includes(outcome.status))unresolved=true;}if(matches.length)results.push({appellation,matches});if((gate&&!matches.length)||unresolved||(!appellation.wines.length&&entities.every(e=>!e.wines.length)))unknownAppellations.push(appellation);}return {results,unknownCount:unknownAppellations.length,unknownAppellations};}
 
 /** Versioned display projection. Source meaning stays in the original DTO. */
 export function validateReaderPresentation(data) {
  const r=data.readerPresentation;
- if(![7,8,9].includes(data.schemaVersion))fail('reader projection requires schema7/8/9');
+ if(![7,8,9,10].includes(data.schemaVersion))fail('reader projection requires schema7/8/9/10');
  keys(r,['version','sourceVersion','canonicalVersion','records'],'readerPresentation');
  if(r.version!==1||r.sourceVersion!==data.version)fail('reader projection version binding');
  string(r.canonicalVersion,'reader canonical version');

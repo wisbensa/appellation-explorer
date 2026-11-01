@@ -1,4 +1,4 @@
-import { textValue, displayName, buildCandidates, findCandidates, searchAppellations, upsertFilter, regionBelongs, evaluateWine, regionalAppellationGroups, transitionForAppellation, createPublicDataLoader, countryEntries, browseRegionGroups } from './lib/public-display.mjs';
+import { textValue, displayName, buildCandidates, findCandidates, searchAppellations, upsertFilter, navigationRegionBelongs, navigationRegionIds, navigationParentId, evaluateWine, regionalAppellationGroups, transitionForAppellation, createPublicDataLoader, countryEntries, browseRegionGroups } from './lib/public-display.mjs';
 import {initialReadingGroups, createDetailModel, filterDetailSubjects, browseDetailSubjects, createReadingNavigation} from './lib/detail-model.mjs';
 import {detailFieldTitle, renderDetailField, renderSubjectOverview, selectSubjectOverview, renderGrapeUseScope, renderSharedFieldGroup, renderDetailSources, renderCompositionStatements} from './lib/detail-view.mjs';
 import {parseExplorationQuery, serializeExplorationQuery, upsertExplorationFilter, evaluateExplorationQuery} from './lib/exploration-query.mjs';
@@ -110,7 +110,12 @@ function navigate(route, id = null, extra = {}) {
   saveEntry();
   const returnEntry = { state, snapshot };
   const returnTo = { route: state.route, id: state.id, search: Boolean(state.contextualSearch || (state.route === 'home' && state.filters.length)) };
-  state = { ...state, returnEntry, tabRestored: false, grapeIntent:null, returnTo, contextualSearch: false, originScope: ['appellation','designation'].includes(route) ? ['region','country'].includes(state.route) ? {route:state.route,id:state.id} : ['appellation','designation'].includes(state.route) ? state.originScope : null : null, route, id, matchIds: [], contextWine: null, ...extra };
+  // Returning through a traversed ancestor keeps its actual prefix, not a
+  // reconstructed geographic path. Direct URLs still have no inferred trail.
+  const traversed=state.route==='region'?(state.navigationTrail||[]):[];
+  const ancestorIndex=traversed.indexOf(id);
+  const navigationTrail=data.schemaVersion===10&&route==='region'?state.route==='region'&&navigationParentId(data,find('region',id))===state.id?[...traversed,state.id]:ancestorIndex>=0?traversed.slice(0,ancestorIndex):[]:['appellation','designation'].includes(route)&&['region','appellation','designation'].includes(state.route)?state.navigationTrail:undefined;
+  state = { ...state, navigationTrail, returnEntry, tabRestored: false, grapeIntent:null, returnTo, contextualSearch: false, originScope: ['appellation','designation'].includes(route) ? ['region','country'].includes(state.route) ? {route:state.route,id:state.id} : ['appellation','designation'].includes(state.route) ? state.originScope : null : null, route, id, matchIds: [], contextWine: null, ...extra };
   depth++;
   overlay = null;
   snapshot = { scroll: 0, open: [] };
@@ -124,7 +129,7 @@ function navigate(route, id = null, extra = {}) {
 function replace(extra, redraw = true) {
   snapshot = capture();
   state = { ...state, ...extra };
-  state.filters = state.filters.filter(f=>!(f.kind===state.route && f.id===state.id && f.mode==='include'));
+  if(data.schemaVersion!==10) state.filters = state.filters.filter(f=>!(f.kind===state.route && f.id===state.id && f.mode==='include'));
   history.replaceState({ ae: true, depth, state, snapshot, overlay, tabViews }, '', urlFor(state));
   if (redraw) render({restorePosition:false});
   else document.querySelector('header .brand')?.setAttribute('href', homeURL());
@@ -170,7 +175,7 @@ function find(kind, id) {
   const collection = { country: 'countries', region: 'regions', grape: 'grapes', appellation: 'appellations', designation: 'designations' }[kind];
   return collection ? (data[collection] ?? []).find(item => item.id === id) : candidates.find(item => item.kind === kind && item.id === id) ?? data.candidates?.find(item => item.kind === kind && item.id === id);
 }
-const scopedApps = () => [...new Map(data.appellations.filter(app => state.route === 'country' ? app.countryId === state.id : state.route === 'region' ? regionBelongs(data, app.regionIds, state.id) : true).map(app => [app.id,app])).values()];
+const scopedApps = () => [...new Map(data.appellations.filter(app => state.route === 'country' ? app.countryId === state.id : state.route === 'region' ? navigationRegionBelongs(data, navigationRegionIds(data,app), state.id) : true).map(app => [app.id,app])).values()];
 const grapeModeLabel = mode => ({ja:{listed:'資料に掲載',permitted:'使用可能',include:'意味の選択が必要',required:'必須','non-use':'使用しない',exclude:'廃止条件：不使用でも可'},en:{listed:'Listed in documents',permitted:'Permitted',include:'Choose meaning',required:'Required','non-use':'Not legally usable',exclude:'Retired: Can omit'}}[state.lang][mode]||mode);
 const retiredFilters = () => state.filters.filter(f=>f.kind==='grape' && f.mode==='exclude');
 const retiredMessage = () => state.lang==='ja'?'旧条件「不使用でも可」は廃止しました。条件を解除するか、「必須」「使用可能」を選び直してください。条件を自動で読み替えず、検索結果は表示していません。':'The old Can omit condition has been retired. Remove it or explicitly choose Required or Permitted. It has not been converted and search results are paused.';
@@ -179,7 +184,7 @@ function shortWine(wine) { const reading=data?.readerPresentation?.records.find(
 const coverageHTML = () => `<p class="coverage">${escape(t('coverage'))}: ${data.appellations.length} ${state.lang === 'ja' ? '呼称' : 'appellations'} / ${data.regions.length} ${state.lang === 'ja' ? '地域（限定収録）' : 'regions (limited coverage)'}</p>`;
 const invalidFilters = () => state.filters.filter(filter => !find(filter.kind, filter.id));
 const activeFilters = () => {
-  if (!['country', 'region'].includes(state.route)) return state.filters;
+  if (data.schemaVersion===10 || !['country', 'region'].includes(state.route)) return state.filters;
   // Route scope is an additional AND constraint, never a replacement for an
   // explicit exclusion. Reuse an identical inclusion without duplicating it.
   const scope = { kind: state.route, id: state.id, mode: 'include' };
@@ -220,7 +225,7 @@ function row(entity, kind, meta = '') {
   return `<button type="button" class="row" data-action="navigate" data-kind="${kind}" data-id="${escape(entity.id)}"><span class="row-title">${escape(name(entity))}</span><span class="row-meta">${escape(meta)}</span></button>`;
 }
 
-function regionNames(app) { return (app.regionIds ?? []).map(id => name(find('region', id))).filter(Boolean).join(' · '); }
+function regionNames(app) { return (navigationRegionIds(data,app) ?? []).map(id => name(find('region', id))).filter(Boolean).join(' · '); }
 function wineNames(app) {
   const names = [...new Set((app.wines ?? []).map(wine => name(wine)).filter(Boolean))];
   return [...names.slice(0, 3), ...(names.length > 3 ? [state.lang === 'ja' ? `ほか${names.length - 3}タイプ` : `+ ${names.length - 3} types`] : [])].join(' · ');
@@ -300,6 +305,13 @@ function regionGroupsHTML(countryId, parentId) {
 
 // Group only the already evaluated regional results. Headings never enter route
 // state or filters, and each public appellation ID contributes once.
+function resultsCountHTML(filtered, count, total, scopeName) {
+  const ja=state.lang==='ja',compact=data.schemaVersion===10&&!filtered;
+  const heading=ja?filtered?`条件に合う呼称：${count}件`:compact?`収録呼称：${count}件`:`${scopeName}の収録呼称：${count}件`:`${count} ${filtered?'matching':'included'} appellations`;
+  const denominator=compact?'':`<small>${escape(ja?`${scopeName}の収録${total}呼称から検索（限定収録）`:`Search among ${total} included appellations in ${scopeName}`)}</small>`;
+  return `<div class="results-count"><strong>${escape(heading)}</strong>${denominator}</div>`;
+}
+
 function groupedResultsHTML(results, renderCard) {
   const unique = [...new Map(results.map(result => [result.appellation.id, result])).values()];
   const ordered = entries => [...entries].sort((a,b) => name(a.appellation).localeCompare(name(b.appellation),state.lang) || a.appellation.id.localeCompare(b.appellation.id));
@@ -328,10 +340,11 @@ function regionHTML() {
   if (state.route === 'region') {
     let current = entity;
     const seen = new Set();
-    while (current && !seen.has(current.id)) { path.unshift(current); seen.add(current.id); current = find('region', current.parentId); }
+    if(data.schemaVersion===10)path.push(...(state.navigationTrail||[]).map(id=>find('region',id)).filter(r=>r&&r.countryId===entity.countryId&&r.id!==entity.id));
+    while (current && !seen.has(current.id)) { if(data.schemaVersion===10)path.push(current);else path.unshift(current); seen.add(current.id); current = data.schemaVersion===10 ? null : find('region', current.parentId); }
   }
   const country = state.route === 'country' ? entity : find('country', entity.countryId);
-  return `<p class="eyebrow">${escape(t(state.route))}</p><h1>${escape(name(entity))}</h1>${original(entity) !== name(entity) ? `<p class="original">${escape(original(entity))}</p>` : ''}${state.contextualSearch ? '' : `<nav class="path" aria-label="${escape(t('regionContext'))}">${button(t('home'),'home','','quiet')}${[country,...path].filter(Boolean).map(item=>{const current=item.id===entity.id;return `<span class="path-item"><span aria-hidden="true">›</span>${current ? `<span class="path-current" aria-current="page">${escape(name(item))}</span>` : button(name(item),'navigate',`data-kind="${item===country?'country':'region'}" data-id="${escape(item.id)}"`,'quiet')}</span>`;}).join('')}</nav>`}<p class="muted">${escape(state.lang === 'ja' ? 'この地域・国の範囲内で、選択した条件をすべて満たす呼称を検索します。' : 'Search within this region or country, matching every selected condition.')}</p>${regionGroupsHTML(country.id, state.route==='region'?entity.id:null)}${searchUI()}${aboutLink()}`;
+  return `<p class="eyebrow">${escape(t(state.route))}</p><h1>${escape(name(entity))}</h1>${original(entity) !== name(entity) ? `<p class="original">${escape(original(entity))}</p>` : ''}${state.contextualSearch ? '' : `<nav class="path" aria-label="${escape(t('regionContext'))}">${button(t('home'),'home','','quiet')}${[country,...path].filter(Boolean).map(item=>{const current=item.id===entity.id;return `<span class="path-item"><span aria-hidden="true">›</span>${current ? `<span class="path-current" aria-current="page">${escape(name(item))}</span>` : button(name(item),'navigate',`data-kind="${item===country?'country':'region'}" data-id="${escape(item.id)}"`,'quiet')}</span>`;}).join('')}</nav>`}${data.schemaVersion===10?'':`<p class="muted">${escape(state.lang === 'ja' ? 'この地域・国の範囲内で、選択した条件をすべて満たす呼称を検索します。' : 'Search within this region or country, matching every selected condition.')}</p>`}${regionGroupsHTML(country.id, state.route==='region'?entity.id:null)}${searchUI()}${aboutLink()}`;
 }
 
 function migrationState() {
@@ -406,8 +419,8 @@ function cancelGrapeIntent() {
 function candidateMeta(candidate) {
   if(candidate.kind==='grape')return candidate.qualification??'';
   if (candidate.kind === 'designation') return [candidate.qualification, name(find('appellation', candidate.appellationId))].filter(Boolean).join(' · ');
-  if (candidate.kind === 'appellation') return [name(find('country', candidate.countryId)), ...(candidate.regionIds ?? []).map(id => name(find('region', id)))].filter(Boolean).join(' · ');
-  if (candidate.kind === 'region') return [name(find('country', candidate.countryId)), name(find('region', candidate.parentId))].filter(Boolean).join(' · ');
+  if (candidate.kind === 'appellation') return [name(find('country', candidate.countryId)), ...(navigationRegionIds(data,find('appellation',candidate.id)) ?? []).map(id => name(find('region', id)))].filter(Boolean).join(' · ');
+  if (candidate.kind === 'region') return [name(find('country', candidate.countryId)), name(find('region', navigationParentId(data,find('region',candidate.id))))].filter(Boolean).join(' · ');
   return '';
 }
 
@@ -425,7 +438,7 @@ function renderCandidates() {
     const attributes = `data-kind="${kind}" data-id="${escape(candidate.id)}"`;
     const excludeLabel = kind === 'grape' ? grapeModeLabel('required') : state.filters.some(f => f.kind === kind && f.id === candidate.id && f.mode === 'include') ? t('changeExclude') : t('addExclude');
     const isDetail = ['appellation', 'designation'].includes(kind);
-    return `<div class="candidate"><button type="button" class="candidate-name" data-action="${kind==='grape'?'choose-grape':isDetail || kind === 'region' ? 'candidate-navigate' : 'add-filter'}" ${attributes}><span>${escape(name(candidate))}</span>${original(candidate) !== name(candidate) ? `<small lang="und">${escape(original(candidate))}</small>` : ''}${candidateMeta(candidate) ? `<small>${escape(candidateMeta(candidate))}</small>` : ''}<small>${escape(isDetail ? state.lang === 'ja' ? '詳細を見る' : 'View details' : kind === 'region' ? t('explore') : state.lang === 'ja' ? kind === 'grape' ? '条件を選ぶ' : '条件に追加' : kind === 'grape' ? 'Choose condition' : 'Add inclusion filter')} ›</small></button><div class="candidate-actions">${isDetail || kind==='grape' ? '' : `${kind === 'region' && !(state.route === kind && state.id === candidate.id) ? button(t('add'), 'add-filter', `${attributes} aria-label="${escape(name(candidate) + ': ' + t('add'))}"`) : ''}${button(excludeLabel, 'add-filter', `${attributes} data-mode="${kind==='grape'?'required':'exclude'}" aria-label="${escape(name(candidate) + ': ' + excludeLabel)}"`)}`}</div></div>`;
+    return `<div class="candidate"><button type="button" class="candidate-name" data-action="${kind==='grape'?'choose-grape':isDetail || kind === 'region' ? 'candidate-navigate' : 'add-filter'}" ${attributes}><span>${escape(name(candidate))}</span>${original(candidate) !== name(candidate) ? `<small lang="und">${escape(original(candidate))}</small>` : ''}${candidateMeta(candidate) ? `<small>${escape(candidateMeta(candidate))}</small>` : ''}<small>${escape(isDetail ? state.lang === 'ja' ? '詳細を見る' : 'View details' : kind === 'region' ? t('explore') : state.lang === 'ja' ? kind === 'grape' ? '条件を選ぶ' : '条件に追加' : kind === 'grape' ? 'Choose condition' : 'Add inclusion filter')} ›</small></button><div class="candidate-actions">${isDetail || kind==='grape' ? '' : `${kind === 'region' && (data.schemaVersion===10 || !(state.route === kind && state.id === candidate.id)) ? button(t('add'), 'add-filter', `${attributes} aria-label="${escape(name(candidate) + ': ' + t('add'))}"`) : ''}${button(excludeLabel, 'add-filter', `${attributes} data-mode="${kind==='grape'?'required':'exclude'}" aria-label="${escape(name(candidate) + ': ' + excludeLabel)}"`)}`}</div></div>`;
   }).join('')}</section>`).join('') || (state.query.trim() && !candidatesHidden ? `<p class="muted">${escape(t('noCandidates'))}</p>` : '');
 
   if (all.length > found.length) $('candidates').innerHTML += button(t('moreCandidates'), 'more-candidates');
@@ -452,7 +465,7 @@ function renderResults() {
   for (const id of ['type-entrances','country-entrances']) if ($(id)) $(id).hidden = filtered;
   if (state.invalidLink || invalidFilters().length) { $('results').innerHTML = `<p class="notice" role="alert">${escape(t('invalidLink'))}</p>${button(t('reset'), 'reset-filters')}`; return; }
   if (retiredFilters().length) { $('results').innerHTML = `<p class="notice" role="alert">${escape(retiredMessage())}</p>`; return; }
-  if (!activeFilters().length) { $('results').innerHTML = ''; return; }
+  if (!activeFilters().length && !(data.schemaVersion===10&&['country','region'].includes(state.route))) { $('results').innerHTML = ''; return; }
   const scope = scopedApps();
   const outcome = evaluateExplorationQuery({...data, appellations:scope}, activeFilters(),{version:state.queryVersion});
   if(outcome.status!=='ok'){ $('results').innerHTML=`<p role="status">${state.lang==='ja'?'品種条件の意味を選び直してください。現在の条件は保持しています。':'Choose the meaning of the grape condition. Your filters are retained.'}</p>`;return; }
@@ -470,7 +483,7 @@ function renderResults() {
   const partialMatches=unknownAppellations.filter(a=>resultIds.has(a.id));
   const uncertainty=(apps,label,id)=>apps.length?`<details id="${id}" class="result-uncertainty"><summary>${label}（${apps.length}）</summary><ul>${apps.map(a=>`<li>${button(name(a),'open-match',`data-kind="appellation" data-id="${escape(a.id)}"`,'quiet')}</li>`).join('')}</ul></details>`:'';
   const searchExplanation = `${state.filters.some(f=>f.kind==='grape') ? `<p class="meta-line">${escape(state.filters.some(f=>f.kind==='grape'&&f.mode==='non-use')?(ja?'表示された適用対象の規定で、その品種を使用できないと確認できる結果を検索します。呼称全体や実際のボトルへの含有を示すものではありません。':'Searches rules proving that the grape cannot be used in the stated applicable target. This does not generalize to the entire appellation or describe individual bottles.'):state.filters.some(f=>f.kind==='grape'&&f.mode==='listed')?(ja?'要約への掲載を検索します。割合・使用義務・各タイプへの適用・併用可能性・不使用はこの掲載だけでは確認できません。':'Searches published summary listings. Listing alone does not establish proportions, required use, per-type application, joint use or non-use.'):(ja?'必須は規定上使用が必要な品種です。使用可能は必須も含み、個々のボトルへの含有を保証しません。':'Required means obligatory under the rules. Permitted includes required grapes and does not guarantee their presence in individual bottles.'))}</p>`:''}`;
-  $('results').innerHTML = `<div class="results-count"><strong>${escape(ja ? filtered ? `条件に合う呼称：${results.length}件` : `${scopeName}の収録呼称：${results.length}件` : `${results.length} ${filtered?'matching':'included'} appellations`)}</strong><small>${escape(ja?`${scopeName}の収録${scope.length}呼称から検索（限定収録）`:`Search among ${scope.length} included appellations in ${scopeName}`)}</small></div>${filtered ? button(ja?'検索条件のリンクをコピー':'Copy search conditions link','copy-search','','quiet')+'<div id="copy-feedback" role="status"></div>' : ''}${groupedResultsHTML(results,(result,groupId)=>{
+  $('results').innerHTML = `${resultsCountHTML(filtered,results.length,scope.length,scopeName)}${filtered ? button(ja?'検索条件のリンクをコピー':'Copy search conditions link','copy-search','','quiet')+'<div id="copy-feedback" role="status"></div>' : ''}${groupedResultsHTML(results,(result,groupId)=>{
     const app=result.appellation;
     const meta=[regionNames(app),app.gi,...(app.traditionalTerms||[]),app.level].filter(Boolean).join(' · ');
     const destinations=[...new Map((result.matches||[]).filter(m=>m.designation).map(m=>[m.designation.id,m.designation])).values()];
@@ -814,7 +827,7 @@ function render({restorePosition=true}={}) {
     return;
   }
   routeLoading = false;
-  state.filters = state.filters.filter(f => !(f.kind === state.route && f.id === state.id && f.mode === 'include'));
+  if(data.schemaVersion!==10) state.filters = state.filters.filter(f => !(f.kind === state.route && f.id === state.id && f.mode === 'include'));
   renderHeader(); renderTabs();
   $('main').innerHTML = state.route === 'home' ? homeHTML() : ['country', 'region'].includes(state.route) ? regionHTML() : ['appellation', 'designation'].includes(state.route) ? detailsHTML() : state.route === 'recent' ? recentHTML() : aboutHTML();
   if (!$('results') && (state.invalidLink || invalidFilters().length)) $('main').insertAdjacentHTML('afterbegin', `<p class="notice" role="alert">${escape(t('invalidLink'))}</p>${button(t('reset'), 'reset-filters')}`);
